@@ -201,11 +201,200 @@ def render_password_gate():
 
 
 def render_user_page():
-    """用户思念展示页（占位）"""
-    st.write("用户页面（待实现）")
-    if st.button("退出"):
-        st.session_state.role = None
-        st.rerun()
+    # ---------- 获取数据 ----------
+    sheet = get_gsheet()
+    state = read_account_state(sheet)
+    balance = state["balance"]
+    daily_decay = state["daily_decay"]
+    last_update = state["last_update"]
+    start_date = state["start_date"]
+
+    # 先应用衰减
+    if last_update and daily_decay > 0:
+        new_balance, days_passed = calc_decay(balance, daily_decay, last_update)
+        if days_passed > 0:
+            write_account_state(
+                sheet, new_balance, daily_decay,
+                date.today().strftime("%Y-%m-%d"), start_date
+            )
+            append_operation_log(
+                sheet, "自动衰减",
+                f"-{daily_decay * days_passed}",
+                new_balance,
+                f"自动扣减 {days_passed} 天 × {daily_decay}/天"
+            )
+            balance = new_balance
+
+    # 计算展示数据
+    if start_date:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        total_days = (date.today() - start_dt.date()).days
+    else:
+        total_days = 0
+    total_decayed = daily_decay * total_days if daily_decay > 0 else 0
+
+    # ---------- CSS 星空主题 ----------
+    st.markdown("""
+    <style>
+    .stApp {
+        background: linear-gradient(180deg, #0a0a2e 0%, #1a0a3e 40%, #0d1b3e 100%);
+        animation: skyPulse 6s ease-in-out infinite alternate;
+    }
+    @keyframes skyPulse {
+        0% { background: linear-gradient(180deg, #0a0a2e 0%, #1a0a3e 40%, #0d1b3e 100%); }
+        100% { background: linear-gradient(180deg, #0f0f3e 0%, #200f4e 40%, #121f4e 100%); }
+    }
+    /* 星星闪烁 */
+    @keyframes twinkle1 {
+        0%,100% { opacity: 0.3; }
+        50% { opacity: 1; }
+    }
+    @keyframes twinkle2 {
+        0%,100% { opacity: 0.6; }
+        33% { opacity: 0.1; }
+        66% { opacity: 0.9; }
+    }
+    @keyframes twinkle3 {
+        0%,100% { opacity: 0.8; }
+        50% { opacity: 0.2; }
+    }
+    .stars {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        pointer-events: none;
+        z-index: -1;
+        font-size: 1.5rem;
+        color: #ffd;
+    }
+    .star1 { animation: twinkle1 3s infinite; }
+    .star2 { animation: twinkle2 4s infinite 0.5s; }
+    .star3 { animation: twinkle3 3.5s infinite 1s; }
+    .miss-days {
+        text-align: center;
+        color: #c8b8e8;
+        font-size: 1.2rem;
+        margin-top: 1rem;
+    }
+    .balance-card {
+        background: rgba(20,15,50,0.6);
+        border: 1px solid rgba(180,140,220,0.4);
+        border-radius: 24px;
+        padding: 2rem 1.5rem;
+        text-align: center;
+        margin: 1.5rem 0;
+        box-shadow: 0 0 40px rgba(120,80,200,0.15);
+    }
+    .balance-number {
+        font-size: 4.5rem;
+        font-weight: bold;
+        color: #f0e0ff;
+        text-shadow: 0 0 30px rgba(200,150,255,0.7), 0 0 60px rgba(150,100,255,0.4);
+        font-family: 'Georgia', serif;
+        letter-spacing: 2px;
+    }
+    .balance-label {
+        color: #b8a9d0;
+        font-size: 0.95rem;
+        margin-top: 0.3rem;
+    }
+    .stat-row {
+        display: flex;
+        justify-content: space-around;
+        padding: 0.8rem 0;
+        color: #c8c0e0;
+    }
+    .stat-item {
+        text-align: center;
+        flex: 1;
+    }
+    .stat-value {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #e0d5f0;
+    }
+    .stat-label {
+        font-size: 0.75rem;
+        color: #9080b0;
+    }
+    .theme-quote {
+        text-align: center;
+        color: #9070c0;
+        font-style: italic;
+        font-size: 1rem;
+        margin-top: 1.5rem;
+        padding: 1rem;
+        border-top: 1px solid rgba(150,120,200,0.3);
+        border-bottom: 1px solid rgba(150,120,200,0.3);
+    }
+    .logout-link {
+        text-align: center;
+        margin-top: 1.5rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ---------- 星星装饰 ----------
+    star_positions = [
+        ('✦', 'star1', '10%', '8%'),
+        ('✧', 'star2', '85%', '5%'),
+        ('⋆', 'star1', '5%', '30%'),
+        ('✦', 'star3', '90%', '25%'),
+        ('✧', 'star2', '15%', '50%'),
+        ('⋆', 'star3', '80%', '45%'),
+        ('✦', 'star1', '25%', '70%'),
+        ('✧', 'star3', '70%', '65%'),
+        ('⋆', 'star2', '45%', '20%'),
+        ('✦', 'star1', '55%', '55%'),
+    ]
+    stars_html = '<div class="stars">'
+    for star, anim_class, left, top in star_positions:
+        stars_html += f'<span class="{anim_class}" style="position:absolute;left:{left};top:{top};">{star}</span>'
+    stars_html += '</div>'
+    st.markdown(stars_html, unsafe_allow_html=True)
+
+    # ---------- 内容区 ----------
+    st.markdown(f'<p class="miss-days">💫 你被思念着的第 {total_days} 天</p>', unsafe_allow_html=True)
+
+    # 思念值卡片
+    st.markdown(f'''
+    <div class="balance-card">
+        <p style="color:#b0a0d0;font-size:1rem;margin:0;">✨ 当前思念值</p>
+        <p class="balance-number">{int(balance):,}</p>
+        <p class="balance-label">思念如沙，随时间流逝</p>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    # 统计行
+    st.markdown(f'''
+    <div class="stat-row">
+        <div class="stat-item">
+            <div class="stat-value">📊 {int(daily_decay)}</div>
+            <div class="stat-label">每日流逝</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">📅 {int(total_decayed):,}</div>
+            <div class="stat-label">累计消散</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">🕐 {start_date}</div>
+            <div class="stat-label">起始之日</div>
+        </div>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    # 主题文案
+    st.markdown(
+        '<p class="theme-quote">🌙 "时光流转，思念不减"</p>',
+        unsafe_allow_html=True
+    )
+
+    # 退出链接
+    col1, col2, col3 = st.columns([2, 1, 2])
+    with col2:
+        if st.button("🚪 退出", use_container_width=True, key="user_logout"):
+            st.session_state.role = None
+            st.rerun()
 
 
 def render_admin_page():
