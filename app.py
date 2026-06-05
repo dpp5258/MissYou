@@ -2,6 +2,7 @@
 MissYou — 思念量化系统
 星空夜幕主题 | Google Sheets 数据 | Streamlit 部署
 """
+import html
 import json
 
 import streamlit as st
@@ -551,11 +552,11 @@ def render_admin_page():
             for log in logs:
                 table_html += (
                     f'<tr>'
-                    f'<td>{log["time"]}</td>'
-                    f'<td>{log["op_type"]}</td>'
-                    f'<td>{log["change"]}</td>'
-                    f'<td>{log["balance_after"]}</td>'
-                    f'<td>{log["note"]}</td>'
+                    f'<td>{html.escape(str(log["time"]))}</td>'
+                    f'<td>{html.escape(str(log["op_type"]))}</td>'
+                    f'<td>{html.escape(str(log["change"]))}</td>'
+                    f'<td>{html.escape(str(log["balance_after"]))}</td>'
+                    f'<td>{html.escape(str(log["note"]))}</td>'
                     f'</tr>'
                 )
             table_html += "</table>"
