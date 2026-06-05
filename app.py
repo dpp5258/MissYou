@@ -22,21 +22,22 @@ SHEET_NAME = st.secrets["SHEET_NAME"]
 
 def get_gsheet():
     """使用 Streamlit Secrets 中的凭证连接 Google Sheet"""
-    creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    client = gspread.authorize(creds)
-    return client.open(st.secrets["SHEET_NAME"])
+    try:
+        creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        client = gspread.authorize(creds)
+        return client.open(st.secrets["SHEET_NAME"])
+    except Exception as e:
+        st.error(f"无法连接数据库：{e}")
+        st.stop()
 
 def read_account_state(sheet):
     """读取账户状态工作表的唯一一行数据，返回 dict"""
     ws = sheet.worksheet("账户状态")
     # 数据在第 2 行（第 1 行是表头）
     row = ws.row_values(2)
-    if not row:
+    if not row or len(row) < 4:
         return {"balance": 0, "daily_decay": 0, "last_update": "", "start_date": ""}
     return {
         "balance": float(row[0]),
