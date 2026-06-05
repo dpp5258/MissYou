@@ -408,11 +408,169 @@ def render_user_page():
 
 
 def render_admin_page():
-    """管理员后台（占位）"""
-    st.write("管理员后台（待实现）")
-    if st.button("注销登录"):
-        st.session_state.role = None
-        st.rerun()
+    """渲染管理员后台 — 操作区、衰减调整、操作记录"""
+    st.markdown("""
+    <style>
+    .admin-header {
+        background: rgba(0,0,0,0.3);
+        padding: 1rem;
+        border-radius: 12px;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .admin-section {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 1.2rem;
+        margin: 1rem 0;
+    }
+    .log-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8rem;
+        color: #d0d0d0;
+    }
+    .log-table th {
+        background: rgba(255,255,255,0.08);
+        padding: 6px 8px;
+        text-align: left;
+        font-weight: bold;
+        color: #c0b0e0;
+    }
+    .log-table td {
+        padding: 5px 8px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .log-table tr:hover td {
+        background: rgba(255,255,255,0.03);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ---------- 获取数据 ----------
+    sheet = get_gsheet()
+    state = read_account_state(sheet)
+    balance = state["balance"]
+    daily_decay = state["daily_decay"]
+    last_update = state["last_update"]
+    start_date = state["start_date"]
+
+    # 应用衰减
+    if last_update and daily_decay > 0:
+        new_balance, days_passed = calc_decay(balance, daily_decay, last_update)
+        if days_passed > 0:
+            write_account_state(
+                sheet, new_balance, daily_decay,
+                date.today().strftime("%Y-%m-%d"), start_date
+            )
+            append_operation_log(
+                sheet, "自动衰减",
+                f"-{daily_decay * days_passed}",
+                new_balance,
+                f"自动扣减 {days_passed} 天"
+            )
+            balance = new_balance
+
+    # 防止负余额
+    if balance < 0:
+        balance = 0
+
+    # ---------- 页面标题 ----------
+    st.markdown('<div class="admin-header">', unsafe_allow_html=True)
+    st.markdown("## ⚙️ 管理员后台")
+    st.markdown(f"当前余额：**{int(balance):,}** | 日衰减：**{int(daily_decay)}**")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---------- 操作区 ----------
+    with st.container():
+        st.markdown('<div class="admin-section">', unsafe_allow_html=True)
+        st.markdown("### 🎛️ 操作区")
+
+        # 增加
+        with st.expander("➕ 手动增加思念值", expanded=False):
+            add_amount = st.number_input("增加数量", min_value=1, value=100, step=1, key="add_amt")
+            add_note = st.text_input("备注", value="用户线下购买", key="add_note")
+            if st.button("✅ 确认增加", key="add_btn"):
+                new_bal = balance + add_amount
+                write_account_state(
+                    sheet, new_bal, daily_decay,
+                    date.today().strftime("%Y-%m-%d"), start_date
+                )
+                append_operation_log(sheet, "手动增加", f"+{add_amount}", new_bal, add_note)
+                st.success(f"已增加 {add_amount}，当前余额 {int(new_bal):,}")
+                st.rerun()
+
+        # 扣除
+        with st.expander("➖ 手动扣除思念值", expanded=False):
+            sub_amount = st.number_input("扣除数量", min_value=1, value=100, step=1, key="sub_amt")
+            sub_note = st.text_input("备注", value="管理员手动调整", key="sub_note")
+            if st.button("✅ 确认扣除", key="sub_btn"):
+                new_bal = max(0, balance - sub_amount)
+                write_account_state(
+                    sheet, new_bal, daily_decay,
+                    date.today().strftime("%Y-%m-%d"), start_date
+                )
+                append_operation_log(sheet, "手动扣除", f"-{sub_amount}", new_bal, sub_note)
+                st.success(f"已扣除 {sub_amount}，当前余额 {int(new_bal):,}")
+                st.rerun()
+
+        # 调整衰减
+        with st.expander("⚡ 调整每日衰减速度", expanded=False):
+            new_decay = st.number_input(
+                "每日衰减量", min_value=0, value=int(daily_decay), step=1, key="new_decay"
+            )
+            if st.button("✅ 确认调整", key="decay_btn"):
+                write_account_state(
+                    sheet, balance, new_decay,
+                    date.today().strftime("%Y-%m-%d"), start_date
+                )
+                append_operation_log(
+                    sheet, "调整衰减",
+                    f"{int(daily_decay)}->{new_decay}",
+                    balance,
+                    f"衰减速度从 {int(daily_decay)} 调整为 {new_decay}"
+                )
+                st.success(f"每日衰减已调整为 {new_decay}")
+                st.rerun()
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---------- 操作记录 ----------
+    with st.container():
+        st.markdown('<div class="admin-section">', unsafe_allow_html=True)
+        st.markdown("### 📋 近期操作记录")
+
+        logs = read_operation_logs(sheet, limit=20)
+
+        if logs:
+            table_html = """
+            <table class="log-table">
+            <tr><th>时间</th><th>类型</th><th>变化</th><th>余额</th><th>备注</th></tr>
+            """
+            for log in logs:
+                table_html += (
+                    f'<tr>'
+                    f'<td>{log["time"]}</td>'
+                    f'<td>{log["op_type"]}</td>'
+                    f'<td>{log["change"]}</td>'
+                    f'<td>{log["balance_after"]}</td>'
+                    f'<td>{log["note"]}</td>'
+                    f'</tr>'
+                )
+            table_html += "</table>"
+            st.markdown(table_html, unsafe_allow_html=True)
+        else:
+            st.info("暂无操作记录")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---------- 注销 ----------
+    col1, col2, col3 = st.columns([2, 1, 2])
+    with col2:
+        if st.button("🔒 注销登录", use_container_width=True, key="admin_logout"):
+            st.session_state.role = None
+            st.rerun()
 
 
 def main():
