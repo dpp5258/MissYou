@@ -24,3 +24,21 @@ def test_calc_decay_zero_balance():
     new_bal, days = calc_decay(0, 5, date(2026, 1, 1))
     assert days > 0
     assert new_bal == -(days * 5)  # 精确验证衰减计算
+
+
+def test_check_password_user():
+    """输入用户密码应返回 'user'"""
+    from app import check_password
+    assert check_password("user123", "user123", "admin456") == "user"
+
+
+def test_check_password_admin():
+    """输入管理密码应返回 'admin'"""
+    from app import check_password
+    assert check_password("admin456", "user123", "admin456") == "admin"
+
+
+def test_check_password_wrong():
+    """输入错误密码应返回 None"""
+    from app import check_password
+    assert check_password("wrong", "user123", "admin456") is None

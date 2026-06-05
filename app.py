@@ -100,6 +100,132 @@ def calc_decay(balance, daily_decay, last_update_date):
     return new_balance, days_passed
 
 # ============================================================
+# 密码验证（纯函数）
+# ============================================================
+
+def check_password(input_pwd, user_pwd, admin_pwd):
+    """验证输入密码，返回 'user' / 'admin' / None"""
+    if not input_pwd:
+        return None
+    if input_pwd == admin_pwd:
+        return "admin"
+    if input_pwd == user_pwd:
+        return "user"
+    return None
+
+
+# ============================================================
 # Streamlit 页面配置
 # ============================================================
 st.set_page_config(page_title="MissYou", page_icon="🌙", layout="centered")
+
+
+# ============================================================
+# Session State 与页面渲染
+# ============================================================
+
+def init_session():
+    """初始化 session_state 默认值"""
+    defaults = {
+        "role": None,          # None=未登录, 'user'=用户, 'admin'=管理员
+        "login_error": False,
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+
+def render_password_gate():
+    """渲染密码门页面"""
+    # ---------- 星空背景 CSS ----------
+    st.markdown("""
+    <style>
+    .stApp {
+        background: linear-gradient(180deg, #0a0a2e 0%, #1a0a3e 40%, #0d1b3e 100%);
+    }
+    .title-missyou {
+        text-align: center;
+        font-size: 3rem;
+        font-weight: bold;
+        color: #e8d5f5;
+        text-shadow: 0 0 20px rgba(180, 130, 220, 0.6);
+    }
+    .subtitle {
+        text-align: center;
+        color: #b8a9d0;
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
+    }
+    .password-box {
+        background: rgba(255,255,255,0.05);
+        border-radius: 16px;
+        padding: 2rem;
+        border: 1px solid rgba(180,130,220,0.3);
+        max-width: 400px;
+        margin: 0 auto;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ---------- 标题 ----------
+    st.markdown('<p class="title-missyou">🌙 MissYou</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">每一份思念都值得被看见</p>', unsafe_allow_html=True)
+
+    # ---------- 密码输入 ----------
+    with st.container():
+        st.markdown('<div class="password-box">', unsafe_allow_html=True)
+        pwd = st.text_input("🔒 请输入查询密码", type="password", key="pwd_input")
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            btn = st.button("确认查询", use_container_width=True)
+
+        if btn:
+            role = check_password(pwd, USER_PWD, ADMIN_PWD)
+            if role:
+                st.session_state.role = role
+                st.session_state.login_error = False
+                st.rerun()
+            else:
+                st.session_state.login_error = True
+
+        if st.session_state.login_error:
+            st.error("密码错误，无法查看")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # 管理员入口提示
+    st.markdown(
+        '<p style="text-align:center;color:#555;font-size:0.75rem;margin-top:2rem;">'
+        '管理员入口 ▼</p>',
+        unsafe_allow_html=True
+    )
+
+
+def render_user_page():
+    """用户思念展示页（占位）"""
+    st.write("用户页面（待实现）")
+    if st.button("退出"):
+        st.session_state.role = None
+        st.rerun()
+
+
+def render_admin_page():
+    """管理员后台（占位）"""
+    st.write("管理员后台（待实现）")
+    if st.button("注销登录"):
+        st.session_state.role = None
+        st.rerun()
+
+
+def main():
+    init_session()
+
+    if st.session_state.role is None:
+        render_password_gate()
+    elif st.session_state.role == "user":
+        render_user_page()
+    elif st.session_state.role == "admin":
+        render_admin_page()
+
+
+if __name__ == "__main__":
+    main()
