@@ -201,6 +201,7 @@ def render_password_gate():
 
 
 def render_user_page():
+    """渲染用户思念展示页 — 星空主题、余额卡片、统计信息"""
     # ---------- 获取数据 ----------
     sheet = get_gsheet()
     state = read_account_state(sheet)
@@ -224,6 +225,10 @@ def render_user_page():
                 f"自动扣减 {days_passed} 天 × {daily_decay}/天"
             )
             balance = new_balance
+
+    # Prevent negative balance display
+    if balance < 0:
+        balance = 0
 
     # 计算展示数据
     if start_date:
@@ -327,10 +332,6 @@ def render_user_page():
         border-top: 1px solid rgba(150,120,200,0.3);
         border-bottom: 1px solid rgba(150,120,200,0.3);
     }
-    .logout-link {
-        text-align: center;
-        margin-top: 1.5rem;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -357,13 +358,22 @@ def render_user_page():
     st.markdown(f'<p class="miss-days">💫 你被思念着的第 {total_days} 天</p>', unsafe_allow_html=True)
 
     # 思念值卡片
-    st.markdown(f'''
-    <div class="balance-card">
-        <p style="color:#b0a0d0;font-size:1rem;margin:0;">✨ 当前思念值</p>
-        <p class="balance-number">{int(balance):,}</p>
-        <p class="balance-label">思念如沙，随时间流逝</p>
-    </div>
-    ''', unsafe_allow_html=True)
+    if int(balance) <= 0:
+        st.markdown(f'''
+        <div class="balance-card">
+            <p style="color:#b0a0d0;font-size:1rem;margin:0;">✨ 当前思念值</p>
+            <p class="balance-number" style="font-size:2rem;">思念已耗尽</p>
+            <p class="balance-label">思念如风，已散于时光</p>
+        </div>
+        ''', unsafe_allow_html=True)
+    else:
+        st.markdown(f'''
+        <div class="balance-card">
+            <p style="color:#b0a0d0;font-size:1rem;margin:0;">✨ 当前思念值</p>
+            <p class="balance-number">{int(balance):,}</p>
+            <p class="balance-label">思念如沙，随时间流逝</p>
+        </div>
+        ''', unsafe_allow_html=True)
 
     # 统计行
     st.markdown(f'''
