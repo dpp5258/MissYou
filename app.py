@@ -11,6 +11,11 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, date
 
 # ============================================================
+# Streamlit 页面配置 (必须是第一个 Streamlit 调用)
+# ============================================================
+st.set_page_config(page_title="MissYou", page_icon="🌙", layout="centered")
+
+# ============================================================
 # 配置区
 # ============================================================
 USER_PWD = st.secrets["USER_PWD"]
@@ -113,12 +118,6 @@ def check_password(input_pwd, user_pwd, admin_pwd):
     if input_pwd == user_pwd:
         return "user"
     return None
-
-
-# ============================================================
-# Streamlit 页面配置
-# ============================================================
-st.set_page_config(page_title="MissYou", page_icon="🌙", layout="centered")
 
 
 # ============================================================
