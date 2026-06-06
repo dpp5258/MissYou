@@ -3,7 +3,6 @@ MissYou — 思念量化系统
 星空夜幕主题 | Google Sheets 数据 | Streamlit 部署
 """
 import html
-import json
 
 import streamlit as st
 import gspread
@@ -29,7 +28,7 @@ SHEET_NAME = st.secrets["SHEET_NAME"]
 def get_gsheet():
     """使用 Streamlit Secrets 中的凭证连接 Google Sheet"""
     try:
-        creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+        creds_dict = dict(st.secrets["GOOGLE_CREDENTIALS"])
         scopes = ["https://www.googleapis.com/auth/spreadsheets"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
