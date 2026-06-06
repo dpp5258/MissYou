@@ -20,6 +20,7 @@ st.set_page_config(page_title="MissYou", page_icon="🌙", layout="centered")
 USER_PWD = st.secrets["USER_PWD"]
 ADMIN_PWD = st.secrets["ADMIN_PWD"]
 SHEET_NAME = st.secrets["SHEET_NAME"]
+SHEET_ID = st.secrets["SHEET_ID"]
 
 # ============================================================
 # Google Sheets 数据层
@@ -29,13 +30,10 @@ def get_gsheet():
     """使用 Streamlit Secrets 中的凭证连接 Google Sheet"""
     try:
         creds_dict = dict(st.secrets["GOOGLE_CREDENTIALS"])
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive",
-        ]
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
-        return client.open(st.secrets["SHEET_NAME"])
+        return client.open_by_key(st.secrets["SHEET_ID"])
     except Exception as e:
         st.error(f"无法连接数据库：{e}")
         st.stop()
