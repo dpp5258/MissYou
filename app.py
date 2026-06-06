@@ -29,7 +29,10 @@ def get_gsheet():
     """使用 Streamlit Secrets 中的凭证连接 Google Sheet"""
     try:
         creds_dict = dict(st.secrets["GOOGLE_CREDENTIALS"])
-        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
         return client.open(st.secrets["SHEET_NAME"])
