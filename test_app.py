@@ -13,7 +13,7 @@ def test_calc_decay_basic():
 
 
 def test_calc_decay_no_days_passed():
-    """今天刚更新过，0 天，余额不变"""
+    """今天刚更新过，0 天，故余额不变"""
     new_bal, days = calc_decay(5000, 10, date.today())
     assert days == 0
     assert new_bal == 5000
