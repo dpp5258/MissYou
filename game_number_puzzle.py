@@ -18,8 +18,10 @@ import streamlit.components.v1 as components
 # 题目生成（后端）
 # ============================================================
 
-def make_question_id(nums: list[int], target: int) -> str:
+def make_question_id(question_data: dict) -> str:
     """生成题目 ID — 同数字组合 + 同目标 → 同 ID（7 天去重用）"""
+    nums = question_data.get("nums", [])
+    target = question_data.get("target", 0)
     key = f"{'-'.join(map(str, sorted(nums)))}-{target}"
     return hashlib.md5(key.encode()).hexdigest()[:8]
 

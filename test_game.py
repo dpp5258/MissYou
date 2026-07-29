@@ -108,28 +108,29 @@ class TestMakeQuestionID:
     """题目 ID 生成"""
 
     def test_deterministic(self):
-        id1 = make_question_id([3, 8, 3, 8], 24)
-        id2 = make_question_id([3, 8, 3, 8], 24)
+        q = {"nums": [3, 8, 3, 8], "target": 24}
+        id1 = make_question_id(q)
+        id2 = make_question_id(q)
         assert id1 == id2, "同样输入应产生同样 ID"
 
     def test_order_independent(self):
         """数字顺序不影响 ID"""
-        id1 = make_question_id([3, 8, 3, 8], 24)
-        id2 = make_question_id([8, 3, 8, 3], 24)
+        id1 = make_question_id({"nums": [3, 8, 3, 8], "target": 24})
+        id2 = make_question_id({"nums": [8, 3, 8, 3], "target": 24})
         assert id1 == id2
 
     def test_different_nums_different_id(self):
-        id1 = make_question_id([1, 2, 3, 4], 10)
-        id2 = make_question_id([1, 2, 3, 5], 10)
+        id1 = make_question_id({"nums": [1, 2, 3, 4], "target": 10})
+        id2 = make_question_id({"nums": [1, 2, 3, 5], "target": 10})
         assert id1 != id2
 
     def test_different_target_different_id(self):
-        id1 = make_question_id([3, 8, 3, 8], 24)
-        id2 = make_question_id([3, 8, 3, 8], 25)
+        id1 = make_question_id({"nums": [3, 8, 3, 8], "target": 24})
+        id2 = make_question_id({"nums": [3, 8, 3, 8], "target": 25})
         assert id1 != id2
 
     def test_returns_string_of_length_8(self):
-        qid = make_question_id([1, 2, 3, 4], 10)
+        qid = make_question_id({"nums": [1, 2, 3, 4], "target": 10})
         assert isinstance(qid, str)
         assert len(qid) == 8
 

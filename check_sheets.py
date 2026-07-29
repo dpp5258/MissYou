@@ -22,12 +22,12 @@ def main():
         )
         client = gspread.authorize(creds)
         sheet = client.open_by_key(SHEET_ID)
-        print(f"  ✅ 连接成功 → 表格: {sheet.title}")
+        print(f"  [OK] 连接成功 -> 表格: {sheet.title}")
     except FileNotFoundError:
-        print(f"  ❌ 凭证文件不存在: {CREDENTIALS_PATH}")
+        print(f"  [ERR] 凭证文件不存在: {CREDENTIALS_PATH}")
         sys.exit(1)
     except Exception as e:
-        print(f"  ❌ 连接失败: {e}")
+        print(f"  [ERR] 连接失败: {e}")
         sys.exit(1)
 
     # 2. 遍历所有工作表
@@ -38,7 +38,7 @@ def main():
         data = ws.get_all_values()
 
         print("=" * 70)
-        print(f"  📋 [{ws.title}] — {ws.row_count}行 × {ws.col_count}列")
+        print(f"  [{ws.title}] -- {ws.row_count}行 x {ws.col_count}列")
         print("=" * 70)
 
         if not data:
@@ -72,13 +72,13 @@ def main():
                     else:
                         padded.append(str(cell))
                 print(f"  {' | '.join(padded)}")
-            print(f"\n  📊 数据行数: {len(data_rows)}")
+            print(f"\n  数据行数: {len(data_rows)}")
         else:
             print(f"  (暂无数据行)")
         print()
 
     print("=" * 70)
-    print("  ✅ 完成")
+    print("  [OK] 完成")
 
 
 if __name__ == "__main__":
