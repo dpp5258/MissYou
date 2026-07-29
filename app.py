@@ -7,7 +7,10 @@ import html
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+
+from game_engine import GameDef, register_game, get_all_games
+import game_number_puzzle as gnp
 
 # ============================================================
 # Streamlit 页面配置 (必须是第一个 Streamlit 调用)
@@ -84,6 +87,87 @@ def read_operation_logs(sheet, limit=20):
     return logs
 
 # ============================================================
+# 游戏数据层
+# ============================================================
+
+def ensure_game_sheet(sheet):
+    """确保"游戏记录"工作表存在，不存在则自动创建并写表头"""
+    try:
+        sheet.worksheet("游戏记录")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sheet.add_worksheet("游戏记录", rows=1000, cols=7)
+        ws.append_row(["时间", "游戏类型", "题目ID", "题目数据", "用户答案", "得分", "操作后余额"])
+
+
+def is_question_recent(sheet, game_type: str, question_id: str) -> bool:
+    """检查该题目 7 天内是否已经答对过"""
+    try:
+        ws = sheet.worksheet("游戏记录")
+    except gspread.exceptions.WorksheetNotFound:
+        return False
+
+    cutoff = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
+    all_rows = ws.get_all_values()
+
+    for row in all_rows[1:]:  # 跳过表头
+        if len(row) < 3:
+            continue
+        if row[1] == game_type and row[2] == question_id and row[0][:10] >= cutoff:
+            return True
+    return False
+
+
+def submit_game_score(sheet, game: GameDef, question_data: dict, user_answer: str):
+    """
+    统一加分入口 — 所有游戏共用。
+    流程：验证 → 去重 → 写账户 → 写日志 → 写游戏记录
+    返回: (success: bool, message: str, balance_after: int | None)
+    """
+    # 1. 生成题目 ID
+    qid = game.question_id(question_data)
+
+    # 2. 确保工作表存在
+    ensure_game_sheet(sheet)
+
+    # 3. 7 天去重检查
+    if is_question_recent(sheet, game.game_id, qid):
+        return (False, "⏳ 这道题 7 天内已经答过了，换一题吧～", None)
+
+    # 4. 服务端验证答案
+    if not game.validate(question_data, user_answer):
+        return (False, "❌ 答案不对，再想想哦～", None)
+
+    # 5. 读取当前余额
+    state = read_account_state(sheet)
+    new_balance = state["balance"] + game.score
+
+    # 6. 写账户状态
+    write_account_state(
+        sheet, new_balance,
+        state["daily_decay"],
+        date.today().strftime("%Y-%m-%d"),
+        state["start_date"],
+    )
+
+    # 7. 写操作日志
+    append_operation_log(
+        sheet,
+        f"游戏奖励-{game.name}",
+        f"+{game.score}",
+        new_balance,
+        f"题目#{qid}",
+    )
+
+    # 8. 写游戏记录（去重用）
+    ws = sheet.worksheet("游戏记录")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    q_snapshot = ", ".join(f"{k}:{v}" for k, v in question_data.items())
+    ws.append_row([timestamp, game.game_id, qid, q_snapshot, user_answer, game.score, int(new_balance)])
+
+    return (True, f"🎉 答对了！+{game.score} 思念值 ✨", int(new_balance))
+
+
+# ============================================================
 # 衰减逻辑（纯函数）
 # ============================================================
 
@@ -118,6 +202,28 @@ def check_password(input_pwd, user_pwd, admin_pwd):
     if input_pwd == user_pwd:
         return "user"
     return None
+
+
+# ============================================================
+# 游戏注册（新增游戏只需在这里加一行）
+# ============================================================
+
+def _register_all_games():
+    """注册所有游戏到全局注册表"""
+    register_game(GameDef(
+        game_id="number_puzzle",
+        name="🔢 数字拼接运算",
+        description="用4个数字通过+−×÷()拼出目标数",
+        score=370,
+        render=gnp.render_game,
+        generate=gnp.generate_question,
+        validate=gnp.validate_answer,
+        question_id=gnp.make_question_id,
+    ))
+    # 🔮 未来新游戏在这里注册：
+    # register_game(GameDef(game_id="sliding_puzzle", name="🧩 滑动拼图", ...))
+
+_register_all_games()
 
 
 # ============================================================
@@ -392,6 +498,26 @@ def render_user_page():
         </div>
     </div>
     ''', unsafe_allow_html=True)
+
+    # ────────── 🎮 小游戏入口 ──────────
+    st.markdown("---")
+    st.markdown("### 🎮 小游戏赚思念值")
+
+    games = get_all_games()
+    if games:
+        # 游戏选择（只有一款时也显示，为后续扩展留好位置）
+        game_names = [g.name for g in games]
+        if len(game_names) == 1:
+            selected_name = game_names[0]
+        else:
+            selected_name = st.selectbox("选择游戏", game_names, key="game_selector")
+
+        selected_game = next((g for g in games if g.name == selected_name), None)
+        if selected_game:
+            st.caption(f"答对 +{selected_game.score} 思念值 · 每天无限次 · 7天内不重复")
+            selected_game.render(selected_game, sheet)
+    else:
+        st.info("暂无可用游戏，敬请期待～")
 
     # 主题文案
     st.markdown(
