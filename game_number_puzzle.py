@@ -393,8 +393,8 @@ def render_game(game_def, sheet):
     # 渲染嵌入式组件
     result = components.html(_build_html(initial_data), height=460, scrolling=False)
 
-    # 处理前端回传
-    if result:
+    # 处理前端回传（防御：确保 result 是 dict 类型）
+    if result and isinstance(result, dict):
         action = result.get("action")
 
         if action == "submit":
