@@ -3,6 +3,7 @@ MissYou — 思念量化系统
 星空夜幕主题 | Google Sheets 数据 | Streamlit 部署
 """
 import html
+import json
 
 import streamlit as st
 import gspread
@@ -11,6 +12,8 @@ from datetime import datetime, date, timedelta
 
 from game_engine import GameDef, register_game, get_all_games
 import game_number_puzzle as gnp
+import game_memory_match as gmm
+import game_word_match as gwm
 
 # ============================================================
 # Streamlit 页面配置 (必须是第一个 Streamlit 调用)
@@ -117,10 +120,32 @@ def is_question_recent(sheet, game_type: str, question_id: str) -> bool:
     return False
 
 
-def submit_game_score(sheet, game: GameDef, question_data: dict, user_answer: str):
+def _calc_game_score(game: GameDef, question_data: dict, user_answer) -> int:
+    """根据游戏类型和表现计算实际得分"""
+    if game.game_id == "memory_match":
+        pair_count = question_data.get("pair_count", 0)
+        if isinstance(user_answer, dict) and pair_count > 0:
+            optimal = pair_count * 2
+            actual = user_answer.get("total_flips", 999)
+            multiplier = max(0.5, optimal / max(actual, optimal))
+            return int(game.score * multiplier)
+        return game.score
+
+    if game.game_id == "word_match":
+        if isinstance(user_answer, dict):
+            errors = user_answer.get("errors", 0)
+            penalty = max(0.3, 1 - errors * 0.1)
+            return int(game.score * penalty)
+        return game.score
+
+    # 默认固定得分
+    return game.score
+
+
+def submit_game_score(sheet, game: GameDef, question_data: dict, user_answer):
     """
     统一加分入口 — 所有游戏共用。
-    流程：验证 → 去重 → 写账户 → 写日志 → 写游戏记录
+    流程：验证 → 去重 → 计分 → 写账户 → 写日志 → 写游戏记录
     返回: (success: bool, message: str, balance_after: int | None)
     """
     # 1. 生成题目 ID
@@ -137,11 +162,14 @@ def submit_game_score(sheet, game: GameDef, question_data: dict, user_answer: st
     if not game.validate(question_data, user_answer):
         return (False, "❌ 答案不对，再想想哦～", None)
 
-    # 5. 读取当前余额
-    state = read_account_state(sheet)
-    new_balance = state["balance"] + game.score
+    # 5. 计算实际得分（部分游戏根据表现动态调整）
+    score = _calc_game_score(game, question_data, user_answer)
 
-    # 6. 写账户状态
+    # 6. 读取当前余额
+    state = read_account_state(sheet)
+    new_balance = state["balance"] + score
+
+    # 7. 写账户状态
     write_account_state(
         sheet, new_balance,
         state["daily_decay"],
@@ -149,22 +177,23 @@ def submit_game_score(sheet, game: GameDef, question_data: dict, user_answer: st
         state["start_date"],
     )
 
-    # 7. 写操作日志
+    # 8. 写操作日志
     append_operation_log(
         sheet,
         f"游戏奖励-{game.name}",
-        f"+{game.score}",
+        f"+{score}",
         new_balance,
         f"题目#{qid}",
     )
 
-    # 8. 写游戏记录（去重用）
+    # 9. 写游戏记录（去重用）
     ws = sheet.worksheet("游戏记录")
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     q_snapshot = ", ".join(f"{k}:{v}" for k, v in question_data.items())
-    ws.append_row([timestamp, game.game_id, qid, q_snapshot, user_answer, game.score, int(new_balance)])
+    answer_str = json.dumps(user_answer, ensure_ascii=False) if isinstance(user_answer, dict) else str(user_answer)
+    ws.append_row([timestamp, game.game_id, qid, q_snapshot, answer_str, score, int(new_balance)])
 
-    return (True, f"🎉 答对了！+{game.score} 思念值 ✨", int(new_balance))
+    return (True, f"🎉 答对了！+{score} 思念值 ✨", int(new_balance))
 
 
 # ============================================================
@@ -220,8 +249,26 @@ def _register_all_games():
         validate=gnp.validate_answer,
         question_id=gnp.make_question_id,
     ))
-    # 🔮 未来新游戏在这里注册：
-    # register_game(GameDef(game_id="sliding_puzzle", name="🧩 滑动拼图", ...))
+    register_game(GameDef(
+        game_id="memory_match",
+        name="🃏 记忆翻牌",
+        description="翻开卡牌，找到所有配对",
+        score=370,
+        render=gmm.render_game,
+        generate=gmm.generate_question,
+        validate=gmm.validate_answer,
+        question_id=gmm.make_question_id,
+    ))
+    register_game(GameDef(
+        game_id="word_match",
+        name="📝 单词匹配",
+        description="将英文单词与中文释义配对",
+        score=370,
+        render=gwm.render_game,
+        generate=gwm.generate_question,
+        validate=gwm.validate_answer,
+        question_id=gwm.make_question_id,
+    ))
 
 _register_all_games()
 
@@ -505,17 +552,11 @@ def render_user_page():
 
     games = get_all_games()
     if games:
-        # 游戏选择（只有一款时也显示，为后续扩展留好位置）
-        game_names = [g.name for g in games]
-        if len(game_names) == 1:
-            selected_name = game_names[0]
-        else:
-            selected_name = st.selectbox("选择游戏", game_names, key="game_selector")
-
-        selected_game = next((g for g in games if g.name == selected_name), None)
-        if selected_game:
-            st.caption(f"答对 +{selected_game.score} 思念值 · 每天无限次 · 7天内不重复")
-            selected_game.render(selected_game, sheet)
+        tabs = st.tabs([g.name for g in games])
+        for tab, game in zip(tabs, games):
+            with tab:
+                st.caption(f"答对 +{game.score} 思念值 · 每天无限次 · 7天内不重复")
+                game.render(game, sheet)
     else:
         st.info("暂无可用游戏，敬请期待～")
 

@@ -258,5 +258,185 @@ class TestIsQuestionRecent:
         assert result is False
 
 
+class TestMemoryMatch:
+    """记忆翻牌 — 出题、验证、QID"""
+
+    def test_generate_question_structure(self):
+        from game_memory_match import generate_question
+        q = generate_question()
+        assert "cards" in q
+        assert "cols" in q
+        assert "rows" in q
+        assert "pair_count" in q
+        assert "seed" in q
+        assert len(q["cards"]) == q["cols"] * q["rows"]
+
+    def test_cards_are_paired(self):
+        from game_memory_match import generate_question
+        for _ in range(10):
+            q = generate_question()
+            cards = q["cards"]
+            # 每种 emoji 恰好出现 2 次
+            from collections import Counter
+            counts = Counter(cards)
+            for v in counts.values():
+                assert v == 2, f"每种卡牌应正好2张"
+
+    def test_predictable_layout_size(self):
+        from game_memory_match import generate_question
+        valid = {(4, 3), (4, 4)}
+        for _ in range(10):
+            q = generate_question()
+            assert (q["cols"], q["rows"]) in valid
+
+    def test_validate_accepts_reasonable(self):
+        from game_memory_match import validate_answer
+        q = {"pair_count": 6}
+        assert validate_answer(q, {"total_flips": 20, "time_seconds": 45}) is True
+
+    def test_validate_rejects_too_few_flips(self):
+        from game_memory_match import validate_answer
+        q = {"pair_count": 6}
+        assert validate_answer(q, {"total_flips": 6, "time_seconds": 30}) is False  # 最少 12
+
+    def test_validate_rejects_string_input(self):
+        from game_memory_match import validate_answer
+        assert validate_answer({"pair_count": 6}, "some string") is False
+
+    def test_validate_rejects_too_many_flips(self):
+        from game_memory_match import validate_answer
+        q = {"pair_count": 6}
+        assert validate_answer(q, {"total_flips": 100, "time_seconds": 30}) is False  # > 6*10
+
+    def test_validate_rejects_impossible_time(self):
+        from game_memory_match import validate_answer
+        q = {"pair_count": 6}
+        assert validate_answer(q, {"total_flips": 20, "time_seconds": 0}) is False
+        assert validate_answer(q, {"total_flips": 20, "time_seconds": 999}) is False
+
+    def test_qid_deterministic(self):
+        from game_memory_match import make_question_id
+        q = {"seed": 42, "cols": 4, "rows": 3}
+        assert make_question_id(q) == make_question_id(q)
+
+    def test_qid_different_seed(self):
+        from game_memory_match import make_question_id
+        a = make_question_id({"seed": 1, "cols": 4, "rows": 3})
+        b = make_question_id({"seed": 2, "cols": 4, "rows": 3})
+        assert a != b
+
+
+class TestWordMatch:
+    """单词匹配 — 出题、验证、QID"""
+
+    def test_generate_question_structure(self):
+        from game_word_match import generate_question
+        q = generate_question()
+        assert "pairs" in q
+        assert "en_display" in q
+        assert "zh_display" in q
+        assert "difficulty" in q
+        assert "count" in q
+        assert 8 <= q["count"] <= 12
+        assert q["difficulty"] in ("easy", "hard")
+
+    def test_en_display_is_shuffled(self):
+        from game_word_match import generate_question
+        q = generate_question()
+        en_from_pairs = [p[0] for p in q["pairs"]]
+        assert sorted(q["en_display"]) == sorted(en_from_pairs)
+
+    def test_zh_display_is_shuffled(self):
+        from game_word_match import generate_question
+        q = generate_question()
+        zh_from_pairs = [p[1] for p in q["pairs"]]
+        assert sorted(q["zh_display"]) == sorted(zh_from_pairs)
+
+    def test_validate_all_correct(self):
+        from game_word_match import validate_answer
+        q = {"pairs": [("apple", "苹果"), ("book", "书")]}
+        assert validate_answer(q, {"matches": [["apple", "苹果"], ["book", "书"]]}) is True
+
+    def test_validate_wrong_pair(self):
+        from game_word_match import validate_answer
+        q = {"pairs": [("apple", "苹果"), ("book", "书")]}
+        assert validate_answer(q, {"matches": [["apple", "书"], ["book", "苹果"]]}) is False
+
+    def test_validate_missing_pair(self):
+        from game_word_match import validate_answer
+        q = {"pairs": [("apple", "苹果"), ("book", "书")]}
+        assert validate_answer(q, {"matches": [["apple", "苹果"]]}) is False
+
+    def test_validate_string_rejected(self):
+        from game_word_match import validate_answer
+        assert validate_answer({"pairs": []}, "wrong type") is False
+
+    def test_qid_same_words_same_id(self):
+        from game_word_match import make_question_id
+        q1 = {"pairs": [("apple", "苹果"), ("book", "书")]}
+        q2 = {"pairs": [("book", "书"), ("apple", "苹果")]}
+        assert make_question_id(q1) == make_question_id(q2)
+
+    def test_qid_different_words_different_id(self):
+        from game_word_match import make_question_id
+        a = make_question_id({"pairs": [("apple", "苹果")]})
+        b = make_question_id({"pairs": [("dog", "狗")]})
+        assert a != b
+
+
+class TestDynamicScore:
+    """动态计分 _calc_game_score"""
+
+    def test_number_puzzle_fixed_score(self):
+        from app import _calc_game_score
+        from game_engine import GameDef
+        g = GameDef(game_id="number_puzzle", name="test", description="", score=370)
+        assert _calc_game_score(g, {}, "3+8+3+8") == 370
+
+    def test_memory_match_perfect(self):
+        from app import _calc_game_score
+        from game_engine import GameDef
+        g = GameDef(game_id="memory_match", name="test", description="", score=370)
+        # 6 对，最优 12 次翻牌 → 系数 1.0
+        score = _calc_game_score(g, {"pair_count": 6}, {"total_flips": 12, "time_seconds": 30})
+        assert score == 370
+
+    def test_memory_match_terrible(self):
+        from app import _calc_game_score
+        from game_engine import GameDef
+        g = GameDef(game_id="memory_match", name="test", description="", score=370)
+        # 6 对，60 次翻牌 → 系数 12/60=0.2, clamp to 0.5
+        score = _calc_game_score(g, {"pair_count": 6}, {"total_flips": 60, "time_seconds": 180})
+        assert score == int(370 * 0.5)
+
+    def test_memory_match_string_answer(self):
+        from app import _calc_game_score
+        from game_engine import GameDef
+        g = GameDef(game_id="memory_match", name="test", description="", score=370)
+        # 传入字符串（兼容旧格式），应返回默认分
+        assert _calc_game_score(g, {"pair_count": 6}, "old_format") == 370
+
+    def test_word_match_perfect(self):
+        from app import _calc_game_score
+        from game_engine import GameDef
+        g = GameDef(game_id="word_match", name="test", description="", score=370)
+        score = _calc_game_score(g, {}, {"errors": 0})
+        assert score == 370
+
+    def test_word_match_many_errors(self):
+        from app import _calc_game_score
+        from game_engine import GameDef
+        g = GameDef(game_id="word_match", name="test", description="", score=370)
+        # 7 次错误 → penalty = 1-7*0.1 = 0.3
+        score = _calc_game_score(g, {}, {"errors": 7})
+        assert score == int(370 * 0.3)
+
+    def test_word_match_string_answer(self):
+        from app import _calc_game_score
+        from game_engine import GameDef
+        g = GameDef(game_id="word_match", name="test", description="", score=370)
+        assert _calc_game_score(g, {}, "old_format") == 370
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
