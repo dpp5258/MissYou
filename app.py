@@ -6,11 +6,10 @@ import html
 import json
 
 import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
 from datetime import datetime, date, timedelta
 
-from game_engine import GameDef, register_game, get_all_games
+from game_engine import GameDef, register_game, get_all_games, calc_game_score
+import storage
 import game_number_puzzle as gnp
 import game_memory_match as gmm
 import game_word_match as gwm
@@ -29,171 +28,20 @@ SHEET_NAME = st.secrets["SHEET_NAME"]
 SHEET_ID = st.secrets["SHEET_ID"]
 
 # ============================================================
-# Google Sheets 数据层
+# 存储初始化（app.py 启动时调用一次）
 # ============================================================
 
-def get_gsheet():
-    """使用 Streamlit Secrets 中的凭证连接 Google Sheet"""
+def _init_storage():
+    """初始化 Google Sheets 存储连接"""
     try:
-        creds_dict = dict(st.secrets["GOOGLE_CREDENTIALS"])
-        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        client = gspread.authorize(creds)
-        return client.open_by_key(st.secrets["SHEET_ID"])
+        storage.init_store(
+            dict(st.secrets["GOOGLE_CREDENTIALS"]),
+            st.secrets["SHEET_ID"],
+        )
+        return True
     except Exception as e:
         st.error(f"无法连接数据库：{e}")
         st.stop()
-
-def read_account_state(sheet):
-    """读取账户状态工作表的唯一一行数据，返回 dict"""
-    ws = sheet.worksheet("账户状态")
-    # 数据在第 2 行（第 1 行是表头）
-    row = ws.row_values(2)
-    if not row or len(row) < 4:
-        return {"balance": 0, "daily_decay": 0, "last_update": "", "start_date": ""}
-    return {
-        "balance": float(row[0]),
-        "daily_decay": float(row[1]),
-        "last_update": row[2],
-        "start_date": row[3],
-    }
-
-def write_account_state(sheet, balance, daily_decay, last_update, start_date):
-    """覆写账户状态工作表的第 2 行"""
-    ws = sheet.worksheet("账户状态")
-    ws.update("A2:D2", [[balance, daily_decay, last_update, start_date]])
-
-def append_operation_log(sheet, op_type, change, balance_after, note=""):
-    """在操作记录工作表末尾追加一行"""
-    ws = sheet.worksheet("操作记录")
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    ws.append_row([timestamp, op_type, change, balance_after, note])
-
-def read_operation_logs(sheet, limit=20):
-    """读取操作记录工作表最近 N 条，返回 list[dict]"""
-    ws = sheet.worksheet("操作记录")
-    all_rows = ws.get_all_values()
-    # 跳过表头，取最后 limit 行，倒序
-    data_rows = all_rows[1:] if len(all_rows) > 1 else []
-    recent = data_rows[-limit:] if len(data_rows) > limit else data_rows
-    recent.reverse()
-    logs = []
-    for row in recent:
-        if len(row) >= 5:
-            logs.append({
-                "time": row[0],
-                "op_type": row[1],
-                "change": row[2],
-                "balance_after": row[3],
-                "note": row[4],
-            })
-    return logs
-
-# ============================================================
-# 游戏数据层
-# ============================================================
-
-def ensure_game_sheet(sheet):
-    """确保"游戏记录"工作表存在，不存在则自动创建并写表头"""
-    try:
-        sheet.worksheet("游戏记录")
-    except gspread.exceptions.WorksheetNotFound:
-        ws = sheet.add_worksheet("游戏记录", rows=1000, cols=7)
-        ws.append_row(["时间", "游戏类型", "题目ID", "题目数据", "用户答案", "得分", "操作后余额"])
-
-
-def is_question_recent(sheet, game_type: str, question_id: str) -> bool:
-    """检查该题目 7 天内是否已经答对过"""
-    try:
-        ws = sheet.worksheet("游戏记录")
-    except gspread.exceptions.WorksheetNotFound:
-        return False
-
-    cutoff = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
-    all_rows = ws.get_all_values()
-
-    for row in all_rows[1:]:  # 跳过表头
-        if len(row) < 3:
-            continue
-        if row[1] == game_type and row[2] == question_id and row[0][:10] >= cutoff:
-            return True
-    return False
-
-
-def _calc_game_score(game: GameDef, question_data: dict, user_answer) -> int:
-    """根据游戏类型和表现计算实际得分"""
-    if game.game_id == "memory_match":
-        pair_count = question_data.get("pair_count", 0)
-        if isinstance(user_answer, dict) and pair_count > 0:
-            optimal = pair_count * 2
-            actual = user_answer.get("total_flips", 999)
-            multiplier = max(0.5, optimal / max(actual, optimal))
-            return int(game.score * multiplier)
-        return game.score
-
-    if game.game_id == "word_match":
-        if isinstance(user_answer, dict):
-            errors = user_answer.get("errors", 0)
-            penalty = max(0.3, 1 - errors * 0.1)
-            return int(game.score * penalty)
-        return game.score
-
-    # 默认固定得分
-    return game.score
-
-
-def submit_game_score(sheet, game: GameDef, question_data: dict, user_answer):
-    """
-    统一加分入口 — 所有游戏共用。
-    流程：验证 → 去重 → 计分 → 写账户 → 写日志 → 写游戏记录
-    返回: (success: bool, message: str, balance_after: int | None)
-    """
-    # 1. 生成题目 ID
-    qid = game.question_id(question_data)
-
-    # 2. 确保工作表存在
-    ensure_game_sheet(sheet)
-
-    # 3. 7 天去重检查
-    if is_question_recent(sheet, game.game_id, qid):
-        return (False, "⏳ 这道题 7 天内已经答过了，换一题吧～", None)
-
-    # 4. 服务端验证答案
-    if not game.validate(question_data, user_answer):
-        return (False, "❌ 答案不对，再想想哦～", None)
-
-    # 5. 计算实际得分（部分游戏根据表现动态调整）
-    score = _calc_game_score(game, question_data, user_answer)
-
-    # 6. 读取当前余额
-    state = read_account_state(sheet)
-    new_balance = state["balance"] + score
-
-    # 7. 写账户状态
-    write_account_state(
-        sheet, new_balance,
-        state["daily_decay"],
-        date.today().strftime("%Y-%m-%d"),
-        state["start_date"],
-    )
-
-    # 8. 写操作日志
-    append_operation_log(
-        sheet,
-        f"游戏奖励-{game.name}",
-        f"+{score}",
-        new_balance,
-        f"题目#{qid}",
-    )
-
-    # 9. 写游戏记录（去重用）
-    ws = sheet.worksheet("游戏记录")
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    q_snapshot = ", ".join(f"{k}:{v}" for k, v in question_data.items())
-    answer_str = json.dumps(user_answer, ensure_ascii=False) if isinstance(user_answer, dict) else str(user_answer)
-    ws.append_row([timestamp, game.game_id, qid, q_snapshot, answer_str, score, int(new_balance)])
-
-    return (True, f"🎉 答对了！+{score} 思念值 ✨", int(new_balance))
 
 
 # ============================================================
@@ -356,26 +204,26 @@ def render_password_gate():
 def render_user_page():
     """渲染用户思念展示页 — 星空主题、余额卡片、统计信息"""
     # ---------- 获取数据 ----------
-    sheet = get_gsheet()
-    state = read_account_state(sheet)
-    balance = state["balance"]
-    daily_decay = state["daily_decay"]
-    last_update = state["last_update"]
-    start_date = state["start_date"]
+    store = storage.get_store()
+    account = store.get_account()
+    balance = account.balance
+    daily_decay = account.daily_decay
+    last_update = account.last_update
+    start_date = account.start_date
 
     # 先应用衰减
     if last_update and daily_decay > 0:
         new_balance, days_passed = calc_decay(balance, daily_decay, last_update)
         if days_passed > 0:
-            write_account_state(
-                sheet, new_balance, daily_decay,
-                date.today().strftime("%Y-%m-%d"), start_date
+            store.set_balance(
+                new_balance, daily_decay,
+                date.today().strftime("%Y-%m-%d"), start_date,
             )
-            append_operation_log(
-                sheet, "自动衰减",
+            store.add_log(
+                "自动衰减",
                 f"-{daily_decay * days_passed}",
                 new_balance,
-                f"自动扣减 {days_passed} 天 × {daily_decay}/天"
+                f"自动扣减 {days_passed} 天 × {daily_decay}/天",
             )
             balance = new_balance
 
@@ -556,7 +404,7 @@ def render_user_page():
         for tab, game in zip(tabs, games):
             with tab:
                 st.caption(f"答对 +{game.score} 思念值 · 每天无限次 · 7天内不重复")
-                game.render(game, sheet)
+                game.render(game)
     else:
         st.info("暂无可用游戏，敬请期待～")
 
@@ -616,26 +464,26 @@ def render_admin_page():
     """, unsafe_allow_html=True)
 
     # ---------- 获取数据 ----------
-    sheet = get_gsheet()
-    state = read_account_state(sheet)
-    balance = state["balance"]
-    daily_decay = state["daily_decay"]
-    last_update = state["last_update"]
-    start_date = state["start_date"]
+    store = storage.get_store()
+    account = store.get_account()
+    balance = account.balance
+    daily_decay = account.daily_decay
+    last_update = account.last_update
+    start_date = account.start_date
 
     # 应用衰减
     if last_update and daily_decay > 0:
         new_balance, days_passed = calc_decay(balance, daily_decay, last_update)
         if days_passed > 0:
-            write_account_state(
-                sheet, new_balance, daily_decay,
-                date.today().strftime("%Y-%m-%d"), start_date
+            store.set_balance(
+                new_balance, daily_decay,
+                date.today().strftime("%Y-%m-%d"), start_date,
             )
-            append_operation_log(
-                sheet, "自动衰减",
+            store.add_log(
+                "自动衰减",
                 f"-{daily_decay * days_passed}",
                 new_balance,
-                f"自动扣减 {days_passed} 天"
+                f"自动扣减 {days_passed} 天",
             )
             balance = new_balance
 
@@ -660,11 +508,11 @@ def render_admin_page():
             add_note = st.text_input("备注", value="用户线下购买", key="add_note")
             if st.button("✅ 确认增加", key="add_btn"):
                 new_bal = balance + add_amount
-                write_account_state(
-                    sheet, new_bal, daily_decay,
-                    date.today().strftime("%Y-%m-%d"), start_date
+                store.set_balance(
+                    new_bal, daily_decay,
+                    date.today().strftime("%Y-%m-%d"), start_date,
                 )
-                append_operation_log(sheet, "手动增加", f"+{add_amount}", new_bal, add_note)
+                store.add_log("手动增加", f"+{add_amount}", new_bal, add_note)
                 st.success(f"已增加 {add_amount}，当前余额 {int(new_bal):,}")
                 st.rerun()
 
@@ -674,11 +522,11 @@ def render_admin_page():
             sub_note = st.text_input("备注", value="管理员手动调整", key="sub_note")
             if st.button("✅ 确认扣除", key="sub_btn"):
                 new_bal = max(0, balance - sub_amount)
-                write_account_state(
-                    sheet, new_bal, daily_decay,
-                    date.today().strftime("%Y-%m-%d"), start_date
+                store.set_balance(
+                    new_bal, daily_decay,
+                    date.today().strftime("%Y-%m-%d"), start_date,
                 )
-                append_operation_log(sheet, "手动扣除", f"-{sub_amount}", new_bal, sub_note)
+                store.add_log("手动扣除", f"-{sub_amount}", new_bal, sub_note)
                 st.success(f"已扣除 {sub_amount}，当前余额 {int(new_bal):,}")
                 st.rerun()
 
@@ -688,15 +536,15 @@ def render_admin_page():
                 "每日衰减量", min_value=0, value=int(daily_decay), step=1, key="new_decay"
             )
             if st.button("✅ 确认调整", key="decay_btn"):
-                write_account_state(
-                    sheet, balance, new_decay,
-                    date.today().strftime("%Y-%m-%d"), start_date
+                store.set_balance(
+                    balance, new_decay,
+                    date.today().strftime("%Y-%m-%d"), start_date,
                 )
-                append_operation_log(
-                    sheet, "调整衰减",
+                store.add_log(
+                    "调整衰减",
                     f"{int(daily_decay)}->{new_decay}",
                     balance,
-                    f"衰减速度从 {int(daily_decay)} 调整为 {new_decay}"
+                    f"衰减速度从 {int(daily_decay)} 调整为 {new_decay}",
                 )
                 st.success(f"每日衰减已调整为 {new_decay}")
                 st.rerun()
@@ -708,7 +556,7 @@ def render_admin_page():
         st.markdown('<div class="admin-section">', unsafe_allow_html=True)
         st.markdown("### 📋 近期操作记录")
 
-        logs = read_operation_logs(sheet, limit=20)
+        logs = store.get_logs(limit=20)
 
         if logs:
             table_html = """
@@ -742,6 +590,7 @@ def render_admin_page():
 
 def main():
     init_session()
+    _init_storage()
 
     if st.session_state.role is None:
         render_password_gate()

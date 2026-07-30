@@ -372,7 +372,7 @@ def _new_question():
     st.session_state.np_msg = None
 
 
-def render_game(game_def, sheet):
+def render_game(game_def):
     """渲染数字拼接游戏 — 前端 HTML 处理交互，仅提交时走后端"""
     _init_session()
 
@@ -405,14 +405,15 @@ def render_game(game_def, sheet):
             st.session_state.np_tokens = result.get("tokens", [])
             st.session_state.np_used = result.get("used", [False]*4)
 
-            from app import submit_game_score
-            ok, msg, _ = submit_game_score(sheet, game_def, q, formula)
+            from storage import get_store
+            store = get_store()
+            result_obj = store.submit_game_score(game_def, q, formula)
 
-            if ok:
-                st.session_state.np_msg = ("success", msg)
+            if result_obj.success:
+                st.session_state.np_msg = ("success", result_obj.message)
                 _new_question()
             else:
-                st.session_state.np_msg = ("error", msg)
+                st.session_state.np_msg = ("error", result_obj.message)
 
         elif action == "new_question":
             _new_question()

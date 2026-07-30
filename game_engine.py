@@ -15,8 +15,8 @@ class GameDef:
     game_id: str                              # 唯一标识，如 "number_puzzle"
     name: str                                 # 显示名称，如 "🔢 数字拼接运算"
     description: str                          # 一句话介绍
-    score: int = 370                          # 答对得分
-    render: Callable = field(default=lambda g, s: None)   # (game_def, sheet) -> None
+    score: int = 370                          # 答对得分（基准分，实际可被 calc_game_score 调整）
+    render: Callable = field(default=lambda g: None)      # (game_def) -> None
     generate: Callable = field(default=lambda: {})         # () -> question_data
     validate: Callable = field(default=lambda q, a: False) # (question_data, answer) -> bool
     question_id: Callable = field(default=lambda q: "")    # (question_data) -> str
@@ -38,3 +38,29 @@ def get_game(game_id: str) -> GameDef | None:
 def get_all_games() -> list[GameDef]:
     """获取所有已注册游戏"""
     return list(GAME_REGISTRY.values())
+
+
+# ============================================================
+# 动态计分（从 app.py 移入，属于游戏业务逻辑）
+# ============================================================
+
+def calc_game_score(game: GameDef, question_data: dict, user_answer) -> int:
+    """根据游戏类型和表现计算实际得分"""
+    if game.game_id == "memory_match":
+        pair_count = question_data.get("pair_count", 0)
+        if isinstance(user_answer, dict) and pair_count > 0:
+            optimal = pair_count * 2
+            actual = user_answer.get("total_flips", 999)
+            multiplier = max(0.5, optimal / max(actual, optimal))
+            return int(game.score * multiplier)
+        return game.score
+
+    if game.game_id == "word_match":
+        if isinstance(user_answer, dict):
+            errors = user_answer.get("errors", 0)
+            penalty = max(0.3, 1 - errors * 0.1)
+            return int(game.score * penalty)
+        return game.score
+
+    # 默认固定得分（数字拼接等）
+    return game.score

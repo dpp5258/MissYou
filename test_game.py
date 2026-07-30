@@ -193,7 +193,7 @@ class TestGameRegistry:
         old = dict(GAME_REGISTRY)
         GAME_REGISTRY.clear()
         try:
-            mock_render = lambda g, s: None
+            mock_render = lambda g: None
             game = GameDef(
                 game_id="test_game",
                 name="🧪 测试游戏",
@@ -217,44 +217,47 @@ class TestGameRegistry:
 
 
 class TestIsQuestionRecent:
-    """7 天去重 — mock sheet 测试去重逻辑"""
+    """7 天去重 — mock store 测试去重逻辑"""
 
     def test_new_question_not_recent(self):
-        from app import is_question_recent
-        mock_sheet = Mock()
+        from storage import MissYouStore
+        store = MissYouStore({"test": "dummy"}, "test_id")
         mock_ws = Mock()
         mock_ws.get_all_values.return_value = [
             ["时间", "游戏类型", "题目ID", "题目数据", "用户答案", "得分", "操作后余额"],
             ["2026-01-15 10:00", "other_game", "OTHER_01", "...", "...", "370", "1000"],
         ]
-        mock_sheet.worksheet.return_value = mock_ws
-        result = is_question_recent(mock_sheet, "number_puzzle", "NP_new")
+        store._sheet = Mock()
+        store._sheet.worksheet.return_value = mock_ws
+        result = store.is_question_recent("number_puzzle", "NP_new")
         assert result is False
 
     def test_recent_question_detected(self):
-        from app import is_question_recent
+        from storage import MissYouStore
         from datetime import date
-        mock_sheet = Mock()
+        store = MissYouStore({"test": "dummy"}, "test_id")
         mock_ws = Mock()
         today_str = date.today().strftime("%Y-%m-%d")
         mock_ws.get_all_values.return_value = [
             ["时间", "游戏类型", "题目ID", "题目数据", "用户答案", "得分", "操作后余额"],
             [f"{today_str} 10:00", "number_puzzle", "NP_a3f7", "...", "...", "370", "1000"],
         ]
-        mock_sheet.worksheet.return_value = mock_ws
-        result = is_question_recent(mock_sheet, "number_puzzle", "NP_a3f7")
+        store._sheet = Mock()
+        store._sheet.worksheet.return_value = mock_ws
+        result = store.is_question_recent("number_puzzle", "NP_a3f7")
         assert result is True
 
     def test_old_question_not_recent(self):
-        from app import is_question_recent
-        mock_sheet = Mock()
+        from storage import MissYouStore
+        store = MissYouStore({"test": "dummy"}, "test_id")
         mock_ws = Mock()
         mock_ws.get_all_values.return_value = [
             ["时间", "游戏类型", "题目ID", "题目数据", "用户答案", "得分", "操作后余额"],
             ["2025-01-01 10:00", "number_puzzle", "NP_old", "...", "...", "370", "1000"],
         ]
-        mock_sheet.worksheet.return_value = mock_ws
-        result = is_question_recent(mock_sheet, "number_puzzle", "NP_old")
+        store._sheet = Mock()
+        store._sheet.worksheet.return_value = mock_ws
+        result = store.is_question_recent("number_puzzle", "NP_old")
         assert result is False
 
 
@@ -388,54 +391,54 @@ class TestDynamicScore:
     """动态计分 _calc_game_score"""
 
     def test_number_puzzle_fixed_score(self):
-        from app import _calc_game_score
+        from game_engine import calc_game_score
         from game_engine import GameDef
         g = GameDef(game_id="number_puzzle", name="test", description="", score=370)
-        assert _calc_game_score(g, {}, "3+8+3+8") == 370
+        assert calc_game_score(g, {}, "3+8+3+8") == 370
 
     def test_memory_match_perfect(self):
-        from app import _calc_game_score
+        from game_engine import calc_game_score
         from game_engine import GameDef
         g = GameDef(game_id="memory_match", name="test", description="", score=370)
         # 6 对，最优 12 次翻牌 → 系数 1.0
-        score = _calc_game_score(g, {"pair_count": 6}, {"total_flips": 12, "time_seconds": 30})
+        score = calc_game_score(g, {"pair_count": 6}, {"total_flips": 12, "time_seconds": 30})
         assert score == 370
 
     def test_memory_match_terrible(self):
-        from app import _calc_game_score
+        from game_engine import calc_game_score
         from game_engine import GameDef
         g = GameDef(game_id="memory_match", name="test", description="", score=370)
         # 6 对，60 次翻牌 → 系数 12/60=0.2, clamp to 0.5
-        score = _calc_game_score(g, {"pair_count": 6}, {"total_flips": 60, "time_seconds": 180})
+        score = calc_game_score(g, {"pair_count": 6}, {"total_flips": 60, "time_seconds": 180})
         assert score == int(370 * 0.5)
 
     def test_memory_match_string_answer(self):
-        from app import _calc_game_score
+        from game_engine import calc_game_score
         from game_engine import GameDef
         g = GameDef(game_id="memory_match", name="test", description="", score=370)
         # 传入字符串（兼容旧格式），应返回默认分
-        assert _calc_game_score(g, {"pair_count": 6}, "old_format") == 370
+        assert calc_game_score(g, {"pair_count": 6}, "old_format") == 370
 
     def test_word_match_perfect(self):
-        from app import _calc_game_score
+        from game_engine import calc_game_score
         from game_engine import GameDef
         g = GameDef(game_id="word_match", name="test", description="", score=370)
-        score = _calc_game_score(g, {}, {"errors": 0})
+        score = calc_game_score(g, {}, {"errors": 0})
         assert score == 370
 
     def test_word_match_many_errors(self):
-        from app import _calc_game_score
+        from game_engine import calc_game_score
         from game_engine import GameDef
         g = GameDef(game_id="word_match", name="test", description="", score=370)
         # 7 次错误 → penalty = 1-7*0.1 = 0.3
-        score = _calc_game_score(g, {}, {"errors": 7})
+        score = calc_game_score(g, {}, {"errors": 7})
         assert score == int(370 * 0.3)
 
     def test_word_match_string_answer(self):
-        from app import _calc_game_score
+        from game_engine import calc_game_score
         from game_engine import GameDef
         g = GameDef(game_id="word_match", name="test", description="", score=370)
-        assert _calc_game_score(g, {}, "old_format") == 370
+        assert calc_game_score(g, {}, "old_format") == 370
 
 
 if __name__ == "__main__":
