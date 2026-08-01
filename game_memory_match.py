@@ -164,6 +164,37 @@ body {
 }
 .feedback-success { color:#a0e0a0; background:rgba(100,200,100,0.12); }
 .feedback-error { color:#e09090; background:rgba(200,100,100,0.12); }
+/* ── 结算浮层 ── */
+.settlement-overlay { position:fixed; top:0;left:0;width:100%;height:100%;
+  background:rgba(5,3,20,.85); display:flex; align-items:center;
+  justify-content:center; z-index:1000;
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  animation:fadeIn .35s; }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+.settlement-card { background:linear-gradient(145deg,rgba(30,20,60,.95),rgba(15,10,40,.95));
+  border:1px solid rgba(180,140,220,.5); border-radius:20px;
+  padding:28px 24px 20px; text-align:center; max-width:340px; width:90%;
+  box-shadow:0 0 40px rgba(120,80,200,.3),0 0 80px rgba(150,100,255,.15);
+  animation:cardPop .4s cubic-bezier(.175,.885,.32,1.275); }
+@keyframes cardPop { from{transform:scale(.85);opacity:0} to{transform:scale(1);opacity:1} }
+.settlement-title { font-size:1.5rem; font-weight:bold; color:#f0e0ff; margin-bottom:4px; }
+.settlement-score { font-size:2.8rem; font-weight:bold; color:#ff9944; margin:8px 0 2px;
+  text-shadow:0 0 20px rgba(255,153,68,.5); font-family:Georgia,serif; }
+.settlement-score-label { font-size:.85rem; color:#b0a0d0; margin-bottom:14px; }
+.settlement-stats { display:flex; justify-content:center; gap:18px; margin:12px 0 16px; flex-wrap:wrap; }
+.settlement-stat { text-align:center; min-width:60px; }
+.settlement-stat-val { font-size:1.1rem; font-weight:bold; color:#e0d5f0; }
+.settlement-stat-lbl { font-size:.7rem; color:#9080b0; margin-top:2px; }
+.settlement-divider { height:1px; background:rgba(180,140,220,.25); margin:12px 0; }
+.settlement-balance { font-size:.85rem; color:#b0a0d0; margin-bottom:16px; }
+.settlement-balance span { color:#e0c080; font-weight:bold; }
+.btn-play-again { background:linear-gradient(135deg,rgba(120,200,100,.3),rgba(100,180,80,.25));
+  color:#a0e0a0; border:1px solid rgba(120,200,100,.5); border-radius:12px;
+  padding:12px 40px; font-size:1rem; font-weight:700; cursor:pointer;
+  transition:transform .15s,box-shadow .15s;
+  box-shadow:0 0 12px rgba(100,200,100,.15); }
+.btn-play-again:hover { box-shadow:0 0 20px rgba(100,200,100,.3); }
+.btn-play-again:active { transform:scale(.95); }
 </style>
 </head>
 <body>
@@ -175,7 +206,7 @@ var currentQIndex = 0;
 var cards = [], cols = 4, rows = 3, pairCount = 0;
 var flipped = [], matched = new Set();
 var flipCount = 0, timerStart = null, timerInterval = null;
-var locked = false, gameOver = false;
+var locked = false, gameOver = false, resultsShown = false;
 
 // ── 加载指定题目 ──
 function loadQuestion(idx) {
@@ -268,6 +299,11 @@ function onData(data) {
 
     if (data.feedback) {
         showFeedback(data.feedback[0], data.feedback[1]);
+    }
+
+    if (data.settlement && !resultsShown) {
+        resultsShown = true;
+        setTimeout(function() { showSettlement(data.settlement); }, 600);
     }
 }
 
@@ -371,6 +407,44 @@ function showFeedback(type, text) {
     }
 }
 
+// ── 结算浮层 ──
+function showSettlement(s) {
+    var statsHtml =
+        '<div class="settlement-stat"><div class="settlement-stat-val">' +
+        fmtTime(s.stats.time_seconds || 0) + '</div><div class="settlement-stat-lbl">用时</div></div>' +
+        '<div class="settlement-stat"><div class="settlement-stat-val">' +
+        s.stats.total_flips + '</div><div class="settlement-stat-lbl">翻牌次数</div></div>' +
+        '<div class="settlement-stat"><div class="settlement-stat-val">' +
+        s.stats.pair_count + '</div><div class="settlement-stat-lbl">配对</div></div>';
+
+    var html =
+        '<div class="settlement-overlay" id="settlement-overlay">' +
+        '<div class="settlement-card">' +
+        '<div class="settlement-title">🏆 全部配对！</div>' +
+        '<div class="settlement-score">+' + s.score + '</div>' +
+        '<div class="settlement-score-label">思念值</div>' +
+        '<div class="settlement-stats">' + statsHtml + '</div>' +
+        '<div class="settlement-divider"></div>' +
+        '<div class="settlement-balance">💰 当前思念值 <span>' +
+        (s.balance_after || 0).toLocaleString() + '</span></div>' +
+        '<button class="btn-play-again" id="btn-play-again">🔄 再来一把</button>' +
+        '</div></div>';
+
+    var wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+    document.body.appendChild(wrapper.firstElementChild);
+
+    document.getElementById('btn-play-again').addEventListener('click', function() {
+        dismissSettlement();
+        newQuestion();
+    });
+}
+
+function dismissSettlement() {
+    var el = document.getElementById('settlement-overlay');
+    if (el) el.remove();
+}
+
 // ── 启动 ──
 var DATA = __INIT_JSON__;
 onData(DATA);
@@ -396,6 +470,8 @@ def _init_session():
         st.session_state.mm_msg = None
     if "mm_processed_nonce" not in st.session_state:
         st.session_state.mm_processed_nonce = set()
+    if "mm_settlement" not in st.session_state:
+        st.session_state.mm_settlement = None
 
 
 def _ensure_pool():
@@ -451,7 +527,19 @@ def render_game(game_def):
 
                     if result_obj.success:
                         _new_question()
-                        st.session_state.mm_msg = ("success", result_obj.message)
+                        st.session_state.mm_msg = None
+                        st.session_state.mm_settlement = {
+                            "game_id": "memory_match",
+                            "game_name": "记忆翻牌",
+                            "score": result_obj.score,
+                            "balance_after": result_obj.balance_after,
+                            "message": result_obj.message,
+                            "stats": {
+                                "pair_count": q.get("pair_count", 0),
+                                "total_flips": data.get("total_flips", 0),
+                                "time_seconds": data.get("time_seconds", 0),
+                            },
+                        }
                     else:
                         st.session_state.mm_msg = ("error", result_obj.message)
         except Exception:
@@ -473,7 +561,12 @@ def render_game(game_def):
         "questions": pool,
         "current_index": idx,
         "feedback": st.session_state.mm_msg,
+        "settlement": st.session_state.mm_settlement,
     }
 
     # ── 渲染组件 ──
     components.html(_build_html(initial_data), height=520, scrolling=False)
+
+    # 清除已显示的结算数据
+    st.session_state.mm_settlement = None
+    st.session_state.mm_msg = None

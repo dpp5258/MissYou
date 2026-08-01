@@ -28,6 +28,7 @@ class ScoreResult:
     success: bool
     message: str
     balance_after: int | None = None
+    score: int = 0
 
 
 # ============================================================
@@ -223,6 +224,7 @@ class MissYouStore:
                 True,
                 f"🎉 答对了！+{score} 思念值 ✨",
                 int(new_balance),
+                score=score,
             )
         except Exception as e:
             _traceback.print_exc()

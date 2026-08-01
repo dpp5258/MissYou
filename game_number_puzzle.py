@@ -196,6 +196,37 @@ body {{
 .feedback {{ text-align:center; margin:6px 0; font-size:0.85rem; padding:6px; border-radius:8px; }}
 .feedback-success {{ color:#a0e0a0; background:rgba(100,200,100,0.12); }}
 .feedback-error {{ color:#e09090; background:rgba(200,100,100,0.12); }}
+/* ── 结算浮层 ── */
+.settlement-overlay {{ position:fixed; top:0;left:0;width:100%;height:100%;
+  background:rgba(5,3,20,.85); display:flex; align-items:center;
+  justify-content:center; z-index:1000;
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  animation:fadeIn .35s; }}
+@keyframes fadeIn {{ from{{opacity:0}} to{{opacity:1}} }}
+.settlement-card {{ background:linear-gradient(145deg,rgba(30,20,60,.95),rgba(15,10,40,.95));
+  border:1px solid rgba(180,140,220,.5); border-radius:20px;
+  padding:28px 24px 20px; text-align:center; max-width:340px; width:90%;
+  box-shadow:0 0 40px rgba(120,80,200,.3),0 0 80px rgba(150,100,255,.15);
+  animation:cardPop .4s cubic-bezier(.175,.885,.32,1.275); }}
+@keyframes cardPop {{ from{{transform:scale(.85);opacity:0}} to{{transform:scale(1);opacity:1}} }}
+.settlement-title {{ font-size:1.5rem; font-weight:bold; color:#f0e0ff; margin-bottom:4px; }}
+.settlement-score {{ font-size:2.8rem; font-weight:bold; color:#ff9944; margin:8px 0 2px;
+  text-shadow:0 0 20px rgba(255,153,68,.5); font-family:Georgia,serif; }}
+.settlement-score-label {{ font-size:.85rem; color:#b0a0d0; margin-bottom:14px; }}
+.settlement-stats {{ display:flex; justify-content:center; gap:18px; margin:12px 0 16px; flex-wrap:wrap; }}
+.settlement-stat {{ text-align:center; min-width:60px; }}
+.settlement-stat-val {{ font-size:1.1rem; font-weight:bold; color:#e0d5f0; }}
+.settlement-stat-lbl {{ font-size:.7rem; color:#9080b0; margin-top:2px; }}
+.settlement-divider {{ height:1px; background:rgba(180,140,220,.25); margin:12px 0; }}
+.settlement-balance {{ font-size:.85rem; color:#b0a0d0; margin-bottom:16px; }}
+.settlement-balance span {{ color:#e0c080; font-weight:bold; }}
+.btn-play-again {{ background:linear-gradient(135deg,rgba(120,200,100,.3),rgba(100,180,80,.25));
+  color:#a0e0a0; border:1px solid rgba(120,200,100,.5); border-radius:12px;
+  padding:12px 40px; font-size:1rem; font-weight:700; cursor:pointer;
+  transition:transform .15s,box-shadow .15s;
+  box-shadow:0 0 12px rgba(100,200,100,.15); }}
+.btn-play-again:hover {{ box-shadow:0 0 20px rgba(100,200,100,.3); }}
+.btn-play-again:active {{ transform:scale(.95); }}
 .hint-area {{ margin-top:8px; text-align:center; }}
 .btn-hint {{ background:none; border:1px solid rgba(180,140,220,0.25); color:#9080b0; border-radius:8px; padding:6px 16px; font-size:0.8rem; cursor:pointer; }}
 .hint-text {{ display:none; margin-top:6px; font-size:0.85rem; color:#c0a0d0; }}
@@ -209,6 +240,7 @@ let questionPool = [];
 let currentQIndex = 0;
 let nums = [], target = 0, solutions = [];
 let tokens = [], used = [false,false,false,false];
+let timerStart = null, timerInterval = null, resultsShown = false;
 
 // ── 操作符映射 ──
 const OP_LABELS = ['+', '−', '×', '÷', '(', ')'];
@@ -223,6 +255,8 @@ function loadQuestion(idx) {{
     solutions = q.solutions || [];
     tokens = [];
     used = [false,false,false,false];
+    timerStart = null;
+    if (timerInterval) {{ clearInterval(timerInterval); timerInterval = null; }}
     render();
 }}
 
@@ -244,6 +278,11 @@ function onData(data) {{
     if (data.feedback) {{
         showFeedback(data.feedback[0], data.feedback[1]);
     }}
+
+    if (data.settlement && !resultsShown) {{
+        resultsShown = true;
+        setTimeout(function() {{ showSettlement(data.settlement); }}, 500);
+    }}
 }}
 
 // ── 渲染 ──
@@ -258,6 +297,7 @@ function render() {{
         <div class="target-area">
             <div class="target-label">🎯 目标数</div>
             <div class="target-number">${{target}}</div>
+            <div style="color:#9080b0;font-size:0.8rem;margin-top:2px;">⏱ <span id="time-display">00:00</span></div>
         </div>
 
         <div class="section-label">🔢 可用数字 — 每个只能用一次</div>
@@ -303,12 +343,14 @@ function render() {{
 // ── 交互 ──
 function clickNumber(i) {{
     if (used[i]) return;
+    startTimer();
     tokens.push({{type:'num', display:String(nums[i]), index:i}});
     used[i] = true;
     render();
 }}
 
 function clickOp(op) {{
+    startTimer();
     tokens.push({{type:'op', display:op, index:-1}});
     render();
 }}
@@ -323,6 +365,8 @@ function backspace() {{
 function resetAll() {{
     tokens = [];
     used = [false,false,false,false];
+    timerStart = null;
+    if (timerInterval) {{ clearInterval(timerInterval); timerInterval = null; }}
     render();
 }}
 
@@ -334,6 +378,7 @@ function newQuestion() {{
 
 // ── 提交：通过父窗口 URL 参数传递数据 ──
 function submitAnswer() {{
+    stopTimer();
     const formula = tokens.map(t => t.display).join('');
     const q = questionPool[currentQIndex];
     const data = {{
@@ -342,10 +387,70 @@ function submitAnswer() {{
         formula: formula,
         nums: q.nums,
         target: q.target,
+        time_seconds: elapsed(),
         nonce: Math.random().toString(36).substr(2, 8)
     }};
     const encoded = encodeURIComponent(JSON.stringify(data));
     window.parent.location.href = window.parent.location.href.split('?')[0] + '?ma=' + encoded;
+}}
+
+// ── 计时器 ──
+function startTimer() {{
+    if (timerStart) return;
+    timerStart = Date.now();
+    timerInterval = setInterval(function() {{
+        var td = document.getElementById('time-display');
+        if (td) td.textContent = fmtTime(elapsed());
+    }}, 300);
+}}
+function stopTimer() {{
+    if (timerInterval) {{ clearInterval(timerInterval); timerInterval = null; }}
+}}
+function elapsed() {{
+    if (!timerStart) return 0;
+    return Math.floor((Date.now() - timerStart) / 1000);
+}}
+function fmtTime(s) {{
+    var m = Math.floor(s / 60), sec = s % 60;
+    return String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+}}
+
+// ── 结算浮层 ──
+function showSettlement(s) {{
+    var statsHtml =
+        '<div class="settlement-stat"><div class="settlement-stat-val">' +
+        fmtTime(s.stats.time_seconds || 0) + '</div><div class="settlement-stat-lbl">用时</div></div>' +
+        '<div class="settlement-stat"><div class="settlement-stat-val">' +
+        s.stats.formula + '</div><div class="settlement-stat-lbl">你的算式</div></div>' +
+        '<div class="settlement-stat"><div class="settlement-stat-val">' +
+        s.stats.target + '</div><div class="settlement-stat-lbl">目标数</div></div>';
+
+    var html =
+        '<div class="settlement-overlay" id="settlement-overlay">' +
+        '<div class="settlement-card">' +
+        '<div class="settlement-title">🏆 答对了！</div>' +
+        '<div class="settlement-score">+' + s.score + '</div>' +
+        '<div class="settlement-score-label">思念值</div>' +
+        '<div class="settlement-stats">' + statsHtml + '</div>' +
+        '<div class="settlement-divider"></div>' +
+        '<div class="settlement-balance">💰 当前思念值 <span>' +
+        (s.balance_after || 0).toLocaleString() + '</span></div>' +
+        '<button class="btn-play-again" id="btn-play-again">🔄 再来一把</button>' +
+        '</div></div>';
+
+    var wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+    document.body.appendChild(wrapper.firstElementChild);
+
+    document.getElementById('btn-play-again').addEventListener('click', function() {{
+        dismissSettlement();
+        newQuestion();
+    }});
+}}
+
+function dismissSettlement() {{
+    var el = document.getElementById('settlement-overlay');
+    if (el) el.remove();
 }}
 
 function showFeedback(type, text) {{
@@ -390,6 +495,8 @@ def _init_session():
         st.session_state.np_msg = None
     if "np_processed_nonce" not in st.session_state:
         st.session_state.np_processed_nonce = set()
+    if "np_settlement" not in st.session_state:
+        st.session_state.np_settlement = None
 
 
 def _ensure_pool():
@@ -440,7 +547,20 @@ def render_game(game_def):
 
                     if result_obj.success:
                         _new_question()
-                        st.session_state.np_msg = ("success", result_obj.message)
+                        st.session_state.np_msg = None
+                        st.session_state.np_settlement = {
+                            "game_id": "number_puzzle",
+                            "game_name": "数字拼接运算",
+                            "score": result_obj.score,
+                            "balance_after": result_obj.balance_after,
+                            "message": result_obj.message,
+                            "stats": {
+                                "formula": formula,
+                                "target": data.get("target", 0),
+                                "nums": data.get("nums", []),
+                                "time_seconds": data.get("time_seconds", 0),
+                            },
+                        }
                     else:
                         st.session_state.np_msg = ("error", result_obj.message)
         except Exception:
@@ -465,7 +585,12 @@ def render_game(game_def):
         "feedback": st.session_state.np_msg,
         "saved_tokens": st.session_state.np_tokens,
         "saved_used": st.session_state.np_used,
+        "settlement": st.session_state.np_settlement,
     }
 
     # ── 渲染组件（不依赖返回值 — Streamlit 1.36.0 返回 DeltaGenerator）──
     components.html(_build_html(initial_data), height=460, scrolling=False)
+
+    # 清除已显示的结算数据
+    st.session_state.np_settlement = None
+    st.session_state.np_msg = None

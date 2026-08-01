@@ -244,6 +244,37 @@ body {
 }
 .feedback-success { color:#a0e0a0; background:rgba(100,200,100,0.12); }
 .feedback-error { color:#e09090; background:rgba(200,100,100,0.12); }
+/* ── 结算浮层 ── */
+.settlement-overlay { position:fixed; top:0;left:0;width:100%;height:100%;
+  background:rgba(5,3,20,.85); display:flex; align-items:center;
+  justify-content:center; z-index:1000;
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  animation:fadeIn .35s; }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+.settlement-card { background:linear-gradient(145deg,rgba(30,20,60,.95),rgba(15,10,40,.95));
+  border:1px solid rgba(180,140,220,.5); border-radius:20px;
+  padding:28px 24px 20px; text-align:center; max-width:340px; width:90%;
+  box-shadow:0 0 40px rgba(120,80,200,.3),0 0 80px rgba(150,100,255,.15);
+  animation:cardPop .4s cubic-bezier(.175,.885,.32,1.275); }
+@keyframes cardPop { from{transform:scale(.85);opacity:0} to{transform:scale(1);opacity:1} }
+.settlement-title { font-size:1.5rem; font-weight:bold; color:#f0e0ff; margin-bottom:4px; }
+.settlement-score { font-size:2.8rem; font-weight:bold; color:#ff9944; margin:8px 0 2px;
+  text-shadow:0 0 20px rgba(255,153,68,.5); font-family:Georgia,serif; }
+.settlement-score-label { font-size:.85rem; color:#b0a0d0; margin-bottom:14px; }
+.settlement-stats { display:flex; justify-content:center; gap:18px; margin:12px 0 16px; flex-wrap:wrap; }
+.settlement-stat { text-align:center; min-width:60px; }
+.settlement-stat-val { font-size:1.1rem; font-weight:bold; color:#e0d5f0; }
+.settlement-stat-lbl { font-size:.7rem; color:#9080b0; margin-top:2px; }
+.settlement-divider { height:1px; background:rgba(180,140,220,.25); margin:12px 0; }
+.settlement-balance { font-size:.85rem; color:#b0a0d0; margin-bottom:16px; }
+.settlement-balance span { color:#e0c080; font-weight:bold; }
+.btn-play-again { background:linear-gradient(135deg,rgba(120,200,100,.3),rgba(100,180,80,.25));
+  color:#a0e0a0; border:1px solid rgba(120,200,100,.5); border-radius:12px;
+  padding:12px 40px; font-size:1rem; font-weight:700; cursor:pointer;
+  transition:transform .15s,box-shadow .15s;
+  box-shadow:0 0 12px rgba(100,200,100,.15); }
+.btn-play-again:hover { box-shadow:0 0 20px rgba(100,200,100,.3); }
+.btn-play-again:active { transform:scale(.95); }
 </style>
 </head>
 <body>
@@ -261,6 +292,7 @@ var matchedZh = new Set();
 var selectedEn = null;
 var errorCount = 0;
 var gameOver = false;
+var timerStart = null, timerInterval = null, resultsShown = false;
 
 // ── 加载指定题目 ──
 function loadQuestion(idx) {
@@ -277,6 +309,8 @@ function loadQuestion(idx) {
     selectedEn = null;
     errorCount = 0;
     gameOver = false;
+    timerStart = null;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
 
     buildBoard();
 }
@@ -301,6 +335,7 @@ function buildBoard() {
     document.getElementById('app').innerHTML =
         '<div class="stats-bar">' +
         '<span>📚 <span class="' + diffCls + '" style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:0.7rem;font-weight:bold;">' + diffLabel + '</span></span>' +
+        '<div>⏱ <span id="time-display">00:00</span></div>' +
         '<div>✅ <span class="good" id="match-count">0</span>/<span id="total-count">' + pairs.length + '</span></div>' +
         '<div>❌ <span class="bad" id="error-count">0</span> 次错误</div>' +
         '</div>' +
@@ -395,9 +430,33 @@ function onData(data) {
     if (data.feedback) {
         showFeedback(data.feedback[0], data.feedback[1]);
     }
+
+    if (data.settlement && !resultsShown) {
+        resultsShown = true;
+        setTimeout(function() { showSettlement(data.settlement); }, 500);
+    }
 }
 
-// ── 判断配对是否正确 ──
+// ── 计时器 ──
+function startTimer() {
+    if (timerStart) return;
+    timerStart = Date.now();
+    timerInterval = setInterval(function() {
+        var td = document.getElementById('time-display');
+        if (td) td.textContent = fmtTime(elapsed());
+    }, 300);
+}
+function stopTimer() {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+function elapsed() {
+    if (!timerStart) return 0;
+    return Math.floor((Date.now() - timerStart) / 1000);
+}
+function fmtTime(s) {
+    var m = Math.floor(s / 60), sec = s % 60;
+    return String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+}
 function isCorrectPair(en, zh) {
     for (var i = 0; i < pairs.length; i++) {
         if (pairs[i][0] === en && pairs[i][1] === zh) return true;
@@ -408,6 +467,7 @@ function isCorrectPair(en, zh) {
 // ── 交互 ──
 function clickEn(word) {
     if (gameOver || matchedEn.has(word)) return;
+    startTimer();
     selectedEn = word;
     refreshUI();
 }
@@ -423,6 +483,7 @@ function clickZh(word) {
 
         if (matchedEn.size === pairs.length) {
             gameOver = true;
+            stopTimer();
             setTimeout(function() { submitResult(); }, 400);
         }
     } else {
@@ -444,6 +505,8 @@ function resetGame() {
     selectedEn = null;
     errorCount = 0;
     gameOver = false;
+    timerStart = null;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
     refreshUI();
 }
 
@@ -458,6 +521,7 @@ function submitResult() {
         game: 'wm',
         matches: matchList,
         errors: errorCount,
+        time_seconds: elapsed(),
         q_index: currentQIndex,
         nonce: Math.random().toString(36).substr(2, 8)
     };
@@ -471,6 +535,47 @@ function showFeedback(type, text) {
         fb.className = 'feedback feedback-' + type;
         fb.textContent = text;
     }
+}
+
+// ── 结算浮层 ──
+function showSettlement(s) {
+    var diffLabel = s.stats.difficulty === 'easy' ? '六级·基础' : '六级·进阶';
+    var statsHtml =
+        '<div class="settlement-stat"><div class="settlement-stat-val">' +
+        fmtTime(s.stats.time_seconds || 0) + '</div><div class="settlement-stat-lbl">用时</div></div>' +
+        '<div class="settlement-stat"><div class="settlement-stat-val">' +
+        s.stats.total_pairs + '</div><div class="settlement-stat-lbl">词对数</div></div>' +
+        '<div class="settlement-stat"><div class="settlement-stat-val">' +
+        s.stats.errors + '</div><div class="settlement-stat-lbl">错误</div></div>' +
+        '<div class="settlement-stat"><div class="settlement-stat-val" style="font-size:0.85rem;">' +
+        diffLabel + '</div><div class="settlement-stat-lbl">难度</div></div>';
+
+    var html =
+        '<div class="settlement-overlay" id="settlement-overlay">' +
+        '<div class="settlement-card">' +
+        '<div class="settlement-title">🏆 全部匹配！</div>' +
+        '<div class="settlement-score">+' + s.score + '</div>' +
+        '<div class="settlement-score-label">思念值</div>' +
+        '<div class="settlement-stats">' + statsHtml + '</div>' +
+        '<div class="settlement-divider"></div>' +
+        '<div class="settlement-balance">💰 当前思念值 <span>' +
+        (s.balance_after || 0).toLocaleString() + '</span></div>' +
+        '<button class="btn-play-again" id="btn-play-again">🔄 再来一把</button>' +
+        '</div></div>';
+
+    var wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+    document.body.appendChild(wrapper.firstElementChild);
+
+    document.getElementById('btn-play-again').addEventListener('click', function() {
+        dismissSettlement();
+        newQuestion();
+    });
+}
+
+function dismissSettlement() {
+    var el = document.getElementById('settlement-overlay');
+    if (el) el.remove();
 }
 
 // ── 启动 ──
@@ -498,6 +603,8 @@ def _init_session():
         st.session_state.wm_msg = None
     if "wm_processed_nonce" not in st.session_state:
         st.session_state.wm_processed_nonce = set()
+    if "wm_settlement" not in st.session_state:
+        st.session_state.wm_settlement = None
 
 
 def _ensure_pool():
@@ -552,7 +659,22 @@ def render_game(game_def):
 
                     if result_obj.success:
                         _new_question()
-                        st.session_state.wm_msg = ("success", result_obj.message)
+                        st.session_state.wm_msg = None
+                        difficulty_label = "六级·基础" if q.get("difficulty") == "easy" else "六级·进阶"
+                        st.session_state.wm_settlement = {
+                            "game_id": "word_match",
+                            "game_name": "单词匹配",
+                            "score": result_obj.score,
+                            "balance_after": result_obj.balance_after,
+                            "message": result_obj.message,
+                            "stats": {
+                                "total_pairs": q.get("count", 0),
+                                "errors": data.get("errors", 0),
+                                "difficulty": q.get("difficulty", "easy"),
+                                "difficulty_label": difficulty_label,
+                                "time_seconds": data.get("time_seconds", 0),
+                            },
+                        }
                     else:
                         st.session_state.wm_msg = ("error", result_obj.message)
         except Exception:
@@ -574,7 +696,12 @@ def render_game(game_def):
         "questions": pool,
         "current_index": idx,
         "feedback": st.session_state.wm_msg,
+        "settlement": st.session_state.wm_settlement,
     }
 
     # ── 渲染组件 ──
     components.html(_build_html(initial_data), height=560, scrolling=False)
+
+    # 清除已显示的结算数据
+    st.session_state.wm_settlement = None
+    st.session_state.wm_msg = None
