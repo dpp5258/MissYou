@@ -6,6 +6,7 @@ import html
 import json
 
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import datetime, date, timedelta
 
 from game_engine import GameDef, register_game, get_all_games, calc_game_score
@@ -396,6 +397,15 @@ def render_user_page():
 
     # ────────── 🎮 小游戏入口 ──────────
     st.markdown("---")
+
+    # ── 诊断：在 tab 外测试 components.html 返回值 ──
+    test_result = components.html("""
+    <button onclick="window.parent.postMessage(
+        {isStreamlitMessage:true, type:'streamlit:setComponentValue', data:'hello'}, '*'
+    )">TEST postMessage</button>
+    """, height=60, scrolling=False)
+    st.caption(f"🧪 Tab外测试: type={type(test_result).__name__}, val={repr(test_result)[:100]}")
+
     st.markdown("### 🎮 小游戏赚思念值")
 
     games = get_all_games()
