@@ -393,7 +393,7 @@ def render_game(game_def):
     }
 
     # 渲染嵌入式组件
-    result = components.html(_build_html(initial_data), height=460, scrolling=False)
+    result = components.html(_build_html(initial_data), height=460, scrolling=False, key="np_game")
 
     # 处理前端回传（防御：确保 result 是 dict 类型）
     if result and isinstance(result, dict):
@@ -410,8 +410,8 @@ def render_game(game_def):
             result_obj = store.submit_game_score(game_def, q, formula)
 
             if result_obj.success:
-                st.session_state.np_msg = ("success", result_obj.message)
                 _new_question()
+                st.session_state.np_msg = ("success", result_obj.message)
             else:
                 st.session_state.np_msg = ("error", result_obj.message)
 

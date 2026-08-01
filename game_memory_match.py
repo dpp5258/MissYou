@@ -403,7 +403,7 @@ def render_game(game_def):
         "feedback": st.session_state.mm_msg,
     }
 
-    result = components.html(_build_html(initial_data), height=520, scrolling=False)
+    result = components.html(_build_html(initial_data), height=520, scrolling=False, key="mm_game")
 
     if result and isinstance(result, dict):
         action = result.get("action")
@@ -422,8 +422,8 @@ def render_game(game_def):
             )
 
             if result_obj.success:
-                st.session_state.mm_msg = ("success", result_obj.message)
                 _new_question()
+                st.session_state.mm_msg = ("success", result_obj.message)
             else:
                 st.session_state.mm_msg = ("error", result_obj.message)
 

@@ -174,53 +174,62 @@ class MissYouStore:
         calc_score_fn: (game, question_data, user_answer) -> int
             部分游戏根据表现动态调整得分。为 None 则使用 game.score 固定分。
         """
-        # 1. 生成题目 ID
-        qid = game.question_id(question_data)
+        import traceback as _traceback
 
-        # 2. 确保工作表存在
-        self._ensure_game_sheet()
+        try:
+            # 1. 生成题目 ID
+            qid = game.question_id(question_data)
 
-        # 3. 7 天去重检查
-        if self.is_question_recent(game.game_id, qid):
-            return ScoreResult(
-                False, "⏳ 这道题 7 天内已经答过了，换一题吧～"
+            # 2. 确保工作表存在
+            self._ensure_game_sheet()
+
+            # 3. 7 天去重检查
+            if self.is_question_recent(game.game_id, qid):
+                return ScoreResult(
+                    False, "⏳ 这道题 7 天内已经答过了，换一题吧～"
+                )
+
+            # 4. 服务端验证答案
+            if not game.validate(question_data, user_answer):
+                return ScoreResult(False, "❌ 答案不对，再想想哦～")
+
+            # 5. 计算实际得分
+            score = calc_score_fn(game, question_data, user_answer) if calc_score_fn else game.score
+
+            # 6. 读取当前余额
+            account = self.get_account()
+            new_balance = account.balance + score
+
+            # 7. 写账户状态
+            self.set_balance(
+                new_balance, account.daily_decay,
+                date.today().strftime("%Y-%m-%d"), account.start_date,
             )
 
-        # 4. 服务端验证答案
-        if not game.validate(question_data, user_answer):
-            return ScoreResult(False, "❌ 答案不对，再想想哦～")
+            # 8. 写操作日志
+            self.add_log(
+                f"游戏奖励-{game.name}",
+                f"+{score}",
+                new_balance,
+                f"题目#{qid}",
+            )
 
-        # 5. 计算实际得分
-        score = calc_score_fn(game, question_data, user_answer) if calc_score_fn else game.score
+            # 9. 写游戏记录（去重用）
+            self._record_game(
+                game.game_id, qid, question_data, user_answer, score, new_balance,
+            )
 
-        # 6. 读取当前余额
-        account = self.get_account()
-        new_balance = account.balance + score
-
-        # 7. 写账户状态
-        self.set_balance(
-            new_balance, account.daily_decay,
-            date.today().strftime("%Y-%m-%d"), account.start_date,
-        )
-
-        # 8. 写操作日志
-        self.add_log(
-            f"游戏奖励-{game.name}",
-            f"+{score}",
-            new_balance,
-            f"题目#{qid}",
-        )
-
-        # 9. 写游戏记录（去重用）
-        self._record_game(
-            game.game_id, qid, question_data, user_answer, score, new_balance,
-        )
-
-        return ScoreResult(
-            True,
-            f"🎉 答对了！+{score} 思念值 ✨",
-            int(new_balance),
-        )
+            return ScoreResult(
+                True,
+                f"🎉 答对了！+{score} 思念值 ✨",
+                int(new_balance),
+            )
+        except Exception as e:
+            _traceback.print_exc()
+            return ScoreResult(
+                False,
+                f"❌ 数据存储异常，请稍后重试（{e}）",
+            )
 
 
 # ============================================================

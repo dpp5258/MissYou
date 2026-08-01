@@ -18,35 +18,87 @@ import streamlit.components.v1 as components
 
 WORD_BANK = {
     "easy": [
-        ("apple", "苹果"), ("book", "书"), ("cat", "猫"),
-        ("dog", "狗"), ("egg", "鸡蛋"), ("fish", "鱼"),
-        ("girl", "女孩"), ("house", "房子"), ("ice", "冰"),
-        ("jump", "跳"), ("king", "国王"), ("love", "爱"),
-        ("moon", "月亮"), ("night", "夜晚"), ("orange", "橙子"),
-        ("pen", "笔"), ("queen", "女王"), ("rain", "雨"),
-        ("sun", "太阳"), ("tree", "树"), ("umbrella", "雨伞"),
-        ("water", "水"), ("box", "盒子"), ("star", "星星"),
-        ("bird", "鸟"), ("cake", "蛋糕"), ("door", "门"),
-        ("eye", "眼睛"), ("fire", "火"), ("grass", "草"),
-        ("hat", "帽子"), ("island", "岛"),
+        ("abandon", "放弃"), ("absorb", "吸收"),
+        ("abundant", "丰富的"), ("abuse", "滥用"),
+        ("accommodate", "容纳"), ("accomplish", "完成"),
+        ("accumulate", "积累"), ("accurate", "精确的"),
+        ("acknowledge", "承认"), ("acquire", "获得"),
+        ("adequate", "充足的"), ("administer", "管理"),
+        ("advocate", "提倡"), ("aggressive", "进取的"),
+        ("allocate", "分配"), ("alternative", "替代的"),
+        ("ambiguous", "模棱两可的"), ("ambitious", "有雄心的"),
+        ("anticipate", "预期"), ("apparent", "明显的"),
+        ("appreciate", "欣赏"), ("approach", "方法"),
+        ("appropriate", "适当的"), ("approve", "批准"),
+        ("artificial", "人造的"), ("assemble", "组装"),
+        ("assess", "评估"), ("assign", "分配"),
+        ("associate", "联系"), ("assume", "假设"),
+        ("attain", "达到"), ("attribute", "归因于"),
+        ("authority", "权威"), ("autonomous", "自治的"),
+        ("barrier", "障碍"), ("bonus", "奖金"),
+        ("budget", "预算"), ("capable", "有能力的"),
+        ("capacity", "能力"), ("category", "类别"),
+        ("cease", "停止"), ("circumstance", "环境"),
+        ("collapse", "崩溃"), ("commence", "开始"),
+        ("commitment", "承诺"), ("commodity", "商品"),
+        ("compensate", "补偿"), ("competent", "胜任的"),
+        ("comply", "遵守"), ("component", "组成部分"),
+        ("comprehensive", "全面的"), ("comprise", "包含"),
+        ("conceive", "构想"), ("concentrate", "集中"),
+        ("confine", "限制"), ("confirm", "确认"),
+        ("consent", "同意"), ("consequence", "后果"),
+        ("conservative", "保守的"), ("considerable", "相当大的"),
+        ("consistent", "一致的"), ("constant", "持续的"),
+        ("constitute", "构成"), ("consult", "咨询"),
+        ("contemporary", "当代的"), ("contribute", "贡献"),
+        ("controversy", "争议"), ("convenient", "方便的"),
+        ("conventional", "传统的"), ("convert", "转换"),
+        ("convince", "说服"), ("cooperate", "合作"),
+        ("coordinate", "协调"), ("core", "核心"),
     ],
     "hard": [
-        ("adventure", "冒险"), ("brilliant", "杰出的"),
-        ("curious", "好奇的"), ("demonstrate", "展示"),
-        ("enormous", "巨大的"), ("frequent", "频繁的"),
-        ("generous", "慷慨的"), ("hesitate", "犹豫"),
-        ("imagine", "想象"), ("journey", "旅程"),
-        ("knowledge", "知识"), ("landscape", "风景"),
-        ("mysterious", "神秘的"), ("necessary", "必要的"),
-        ("opportunity", "机会"), ("patient", "耐心的"),
-        ("quality", "质量"), ("recognize", "识别"),
-        ("scientific", "科学的"), ("temperature", "温度"),
-        ("universe", "宇宙"), ("volunteer", "志愿者"),
-        ("weather", "天气"), ("ancient", "古老的"),
-        ("benefit", "利益"), ("challenge", "挑战"),
-        ("discover", "发现"), ("evidence", "证据"),
-        ("familiar", "熟悉的"), ("harmony", "和谐"),
-        ("influence", "影响"), ("strategy", "策略"),
+        ("deteriorate", "恶化"), ("dilemma", "困境"),
+        ("diminish", "减少"), ("discriminate", "歧视"),
+        ("disperse", "分散"), ("displace", "取代"),
+        ("dispose", "处理"), ("dissolve", "溶解"),
+        ("distinct", "明显的"), ("distort", "扭曲"),
+        ("distribute", "分配"), ("diverse", "多样的"),
+        ("domestic", "国内的"), ("dominate", "主导"),
+        ("drastic", "激烈的"), ("elaborate", "精心制作的"),
+        ("elevate", "提升"), ("eliminate", "消除"),
+        ("embrace", "拥抱"), ("emerge", "出现"),
+        ("emphasize", "强调"), ("empirical", "经验主义的"),
+        ("encounter", "遭遇"), ("endeavor", "努力"),
+        ("enforce", "强制执行"), ("enhance", "增强"),
+        ("enormous", "巨大的"), ("enrich", "充实"),
+        ("ensure", "确保"), ("enthusiasm", "热情"),
+        ("equivalent", "等价的"), ("erode", "侵蚀"),
+        ("essence", "本质"), ("establish", "建立"),
+        ("estate", "房地产"), ("evaluate", "评估"),
+        ("evolve", "进化"), ("exaggerate", "夸大"),
+        ("exceed", "超过"), ("excessive", "过度的"),
+        ("exclude", "排除"), ("exclusive", "独有的"),
+        ("execute", "执行"), ("exert", "施加"),
+        ("expand", "扩张"), ("expel", "驱逐"),
+        ("explicit", "明确的"), ("exploit", "开发"),
+        ("extensive", "广泛的"), ("external", "外部的"),
+        ("extinct", "灭绝的"), ("extract", "提取"),
+        ("extraordinary", "非凡的"), ("facilitate", "促进"),
+        ("faculty", "才能"), ("feasible", "可行的"),
+        ("flourish", "繁荣"), ("fluctuate", "波动"),
+        ("formulate", "制定"), ("frustrate", "挫败"),
+        ("fundamental", "基本的"), ("generate", "产生"),
+        ("genuine", "真正的"), ("guarantee", "保证"),
+        ("hinder", "阻碍"), ("hypothesis", "假说"),
+        ("identical", "相同的"), ("ignite", "点燃"),
+        ("illuminate", "照亮"), ("illustrate", "说明"),
+        ("implement", "实施"), ("implicit", "含蓄的"),
+        ("impose", "强加"), ("impulse", "冲动"),
+        ("incentive", "激励"), ("incident", "事件"),
+        ("incorporate", "合并"), ("indispensable", "不可或缺的"),
+        ("inferior", "劣等的"), ("inhabit", "居住于"),
+        ("inherit", "继承"), ("initiate", "发起"),
+        ("innovation", "创新"), ("insight", "洞察力"),
     ],
 }
 
@@ -211,7 +263,7 @@ var gameOver = false;
 // ── 一次性创建棋盘 ──
 function buildBoard() {
     var diffCls = difficulty === 'easy' ? 'diff-easy' : 'diff-hard';
-    var diffLabel = difficulty === 'easy' ? '初级' : '中级';
+    var diffLabel = difficulty === 'easy' ? '六级·基础' : '六级·进阶';
 
     var enBtnsHtml = '';
     for (var i = 0; i < enDisplay.length; i++) {
@@ -455,7 +507,7 @@ def render_game(game_def):
         "feedback": st.session_state.wm_msg,
     }
 
-    result = components.html(_build_html(initial_data), height=560, scrolling=False)
+    result = components.html(_build_html(initial_data), height=560, scrolling=False, key="wm_game")
 
     if result and isinstance(result, dict):
         action = result.get("action")
@@ -474,8 +526,8 @@ def render_game(game_def):
             )
 
             if result_obj.success:
-                st.session_state.wm_msg = ("success", result_obj.message)
                 _new_question()
+                st.session_state.wm_msg = ("success", result_obj.message)
             else:
                 st.session_state.wm_msg = ("error", result_obj.message)
 
