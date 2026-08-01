@@ -395,8 +395,16 @@ def render_game(game_def):
     # 渲染嵌入式组件
     result = components.html(_build_html(initial_data), height=460, scrolling=False)
 
-    # ── 调试：记录 components.html 返回值 ──
-    st.caption(f"🔍 组件返回值: `{repr(result)}` | 当前题目: {q['nums']}→{q['target']}")
+    # ── 调试：记录组件返回值 ──
+    if "np_render_count" not in st.session_state:
+        st.session_state.np_render_count = 0
+    st.session_state.np_render_count += 1
+    cnt = st.session_state.np_render_count
+    st.caption(
+        f"🔍 第{cnt}次渲染 | 返回值类型: `{type(result).__name__}` "
+        f"| 是否为dict: {isinstance(result, dict)} "
+        f"| 值: `{repr(result)[:80]}...`"
+    )
 
     # 处理前端回传（防御：确保 result 是 dict 类型）
     if result and isinstance(result, dict):
