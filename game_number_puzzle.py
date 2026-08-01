@@ -3,7 +3,9 @@
 每局 4 个随机数字 + 1 个目标数，用 +−×÷() 拼出算式
 每个数字恰好使用一次，运算结果等于目标数即通关
 
-交互模式：前端 HTML/JS 处理所有点击（零延迟），仅提交和新题走后端
+交互模式：前端 HTML/JS 处理所有点击（零延迟）
+换一题：预生成题目池，JS 本地切换
+提交：JS 通过父窗口 URL 参数传递数据，Python 服务端验证
 """
 import json
 import random
@@ -117,7 +119,7 @@ def validate_answer(question_data: dict, user_answer: str) -> bool:
 # ============================================================
 
 def _build_html(initial_data: dict) -> str:
-    """构建包含完整游戏的 HTML 页面"""
+    """构建包含完整游戏的 HTML 页面 — 题目池模式"""
     init_json = json.dumps(initial_data, ensure_ascii=False)
 
     return f"""<!DOCTYPE html>
@@ -202,29 +204,43 @@ body {{
 <body>
 <div id="app"></div>
 <script>
-// ── 状态 ──
+// ── 题目池 ──
+let questionPool = [];
+let currentQIndex = 0;
 let nums = [], target = 0, solutions = [];
 let tokens = [], used = [false,false,false,false];
 
 // ── 操作符映射 ──
 const OP_LABELS = ['+', '−', '×', '÷', '(', ')'];
 
-// ── 从 Streamlit 接收数据 ──
+// ── 加载指定题目 ──
+function loadQuestion(idx) {{
+    if (idx < 0 || idx >= questionPool.length) return;
+    currentQIndex = idx;
+    const q = questionPool[idx];
+    nums = q.nums || [];
+    target = q.target || 0;
+    solutions = q.solutions || [];
+    tokens = [];
+    used = [false,false,false,false];
+    render();
+}}
+
+// ── 接收 Streamlit 数据 ──
 function onData(data) {{
     if (!data) return;
-    nums = data.nums || [];
-    target = data.target || 0;
-    solutions = data.solutions || [];
+    questionPool = data.questions || [];
+    currentQIndex = data.current_index || 0;
 
+    loadQuestion(currentQIndex);
+
+    // 恢复保存的答题状态
     if (data.saved_tokens && data.saved_tokens.length > 0) {{
         tokens = data.saved_tokens;
         used = data.saved_used || new Array(4).fill(false);
-    }} else if (data.reset !== false) {{
-        tokens = [];
-        used = [false,false,false,false];
+        render();
     }}
 
-    render();
     if (data.feedback) {{
         showFeedback(data.feedback[0], data.feedback[1]);
     }}
@@ -310,21 +326,26 @@ function resetAll() {{
     render();
 }}
 
-function submitAnswer() {{
-    const formula = tokens.map(t => t.display).join('');
-    const data = {{
-        action: 'submit',
-        formula: formula,
-        nums: nums,
-        target: target,
-        tokens: tokens,
-        used: used
-    }};
-    window.parent.postMessage({{isStreamlitMessage: true, type: 'streamlit:setComponentValue', data: data}}, '*');
+// ── 换一题：题目池本地循环 ──
+function newQuestion() {{
+    currentQIndex = (currentQIndex + 1) % questionPool.length;
+    loadQuestion(currentQIndex);
 }}
 
-function newQuestion() {{
-    window.parent.postMessage({{isStreamlitMessage: true, type: 'streamlit:setComponentValue', data: {{action:'new_question'}}}}, '*');
+// ── 提交：通过父窗口 URL 参数传递数据 ──
+function submitAnswer() {{
+    const formula = tokens.map(t => t.display).join('');
+    const q = questionPool[currentQIndex];
+    const data = {{
+        action: 'submit',
+        game: 'np',
+        formula: formula,
+        nums: q.nums,
+        target: q.target,
+        nonce: Math.random().toString(36).substr(2, 8)
+    }};
+    const encoded = encodeURIComponent(JSON.stringify(data));
+    window.parent.location.href = window.parent.location.href.split('?')[0] + '?ma=' + encoded;
 }}
 
 function showFeedback(type, text) {{
@@ -352,94 +373,99 @@ onData(DATA);
 # Session State 与渲染
 # ============================================================
 
+POOL_SIZE = 20  # 预生成题目数量
+
+
 def _init_session():
     """初始化数字拼接游戏的 session state"""
-    if "np_question" not in st.session_state:
-        st.session_state.np_question = None
+    if "np_pool" not in st.session_state:
+        st.session_state.np_pool = []
+    if "np_pool_idx" not in st.session_state:
+        st.session_state.np_pool_idx = 0
     if "np_tokens" not in st.session_state:
         st.session_state.np_tokens = []
     if "np_used" not in st.session_state:
         st.session_state.np_used = [False, False, False, False]
     if "np_msg" not in st.session_state:
-        st.session_state.np_msg = None  # ("success"|"error", text)
+        st.session_state.np_msg = None
+    if "np_processed_nonce" not in st.session_state:
+        st.session_state.np_processed_nonce = set()
+
+
+def _ensure_pool():
+    """确保题目池有题"""
+    if not st.session_state.np_pool or st.session_state.np_pool_idx >= len(st.session_state.np_pool):
+        st.session_state.np_pool = [generate_question() for _ in range(POOL_SIZE)]
+        st.session_state.np_pool_idx = 0
 
 
 def _new_question():
-    """生成新题，重置状态"""
-    st.session_state.np_question = generate_question()
+    """换一题：移动到池中下一题（成功后调用）"""
+    st.session_state.np_pool_idx += 1
     st.session_state.np_tokens = []
     st.session_state.np_used = [False, False, False, False]
-    st.session_state.np_msg = None
+    # 不清除 np_msg — 调用者负责设置消息
 
 
 def render_game(game_def):
-    """渲染数字拼接游戏 — 前端 HTML 处理交互，仅提交时走后端"""
+    """渲染数字拼接游戏"""
     _init_session()
 
-    if st.session_state.np_question is None:
-        _new_question()
+    # ── 处理 URL Query Param 提交（来自前端 JS 的 window.parent.location.href 导航）──
+    if "ma" in st.query_params:
+        try:
+            raw = st.query_params["ma"]
+            data = json.loads(raw)
+            if data.get("game") == "np" and data.get("action") == "submit":
+                nonce = data.get("nonce", "")
+                # 防止重复处理（页面重载可能导致同一参数被处理两次）
+                if nonce and nonce not in st.session_state.np_processed_nonce:
+                    st.session_state.np_processed_nonce.add(nonce)
+                    # 清理旧 nonce（保留最近 20 个）
+                    if len(st.session_state.np_processed_nonce) > 20:
+                        st.session_state.np_processed_nonce = set(
+                            list(st.session_state.np_processed_nonce)[-20:]
+                        )
 
-    q = st.session_state.np_question
+                    formula = data.get("formula", "")
+                    q_data = {"nums": data.get("nums", []), "target": data.get("target", 0)}
 
-    # 构建传给前端的初始数据
+                    # 保存前端状态
+                    st.session_state.np_tokens = []
+                    st.session_state.np_used = [False, False, False, False]
+
+                    from storage import get_store
+                    store = get_store()
+                    result_obj = store.submit_game_score(game_def, q_data, formula)
+
+                    if result_obj.success:
+                        _new_question()
+                        st.session_state.np_msg = ("success", result_obj.message)
+                    else:
+                        st.session_state.np_msg = ("error", result_obj.message)
+        except Exception:
+            pass
+        # 清除 query param（会触发一次额外 rerun，但参数已消失不会重复处理）
+        try:
+            del st.query_params["ma"]
+        except Exception:
+            pass
+
+    # ── 确保题目池有题 ──
+    _ensure_pool()
+
+    pool = st.session_state.np_pool
+    idx = st.session_state.np_pool_idx
+    q = pool[idx]
+
+    # ── 构建前端数据 ──
     initial_data = {
-        "nums": q["nums"],
-        "target": q["target"],
-        "solutions": q["solutions"],
+        "questions": pool,
+        "current_index": idx,
         "feedback": st.session_state.np_msg,
         "saved_tokens": st.session_state.np_tokens,
         "saved_used": st.session_state.np_used,
-        "reset": False,
     }
 
-    # 渲染嵌入式组件
-    result = components.html(_build_html(initial_data), height=460, scrolling=False)
-
-    # ── 调试 ──
-    if "np_render_count" not in st.session_state:
-        st.session_state.np_render_count = 0
-    st.session_state.np_render_count += 1
-    cnt = st.session_state.np_render_count
-
-    # 探测 DeltaGenerator 内部
-    result_type = type(result).__name__
-    attrs = [a for a in dir(result) if not a.startswith('__')]
-    maybe_val = None
-    if hasattr(result, 'value'):
-        maybe_val = result.value
-    elif hasattr(result, 'return_value'):
-        maybe_val = result.return_value
-    elif hasattr(result, '_value'):
-        maybe_val = result._value
-
-    st.caption(
-        f"🔍 第{cnt}次渲染 | 类型: {result_type} | is dict: {isinstance(result, dict)}"
-    )
-    st.caption(
-        f"🔍 公开属性: {attrs[:20]}... | .value: {maybe_val}"
-    )
-
-    # 处理前端回传（防御：确保 result 是 dict 类型）
-    if result and isinstance(result, dict):
-        action = result.get("action")
-
-        if action == "submit":
-            formula = result.get("formula", "")
-            # 保存前端状态（提交失败时可以恢复）
-            st.session_state.np_tokens = result.get("tokens", [])
-            st.session_state.np_used = result.get("used", [False]*4)
-
-            from storage import get_store
-            store = get_store()
-            result_obj = store.submit_game_score(game_def, q, formula)
-
-            if result_obj.success:
-                _new_question()
-                st.session_state.np_msg = ("success", result_obj.message)
-            else:
-                st.session_state.np_msg = ("error", result_obj.message)
-
-        elif action == "new_question":
-            _new_question()
-
-        st.rerun()
+    # ── 渲染组件（不依赖返回值 — Streamlit 1.36.0 返回 DeltaGenerator）──
+    components.html(_build_html(initial_data), height=460, scrolling=False)

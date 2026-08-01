@@ -2,8 +2,9 @@
 英语单词匹配游戏 — MissYou 游戏模块
 左侧英文单词，右侧中文释义，点击配对，全部匹配成功即通关
 
-交互模式：前端 HTML/JS 处理所有点击和匹配判断，
-仅完成时自动提交走后端验证加分
+交互模式：前端 HTML/JS 处理所有点击和匹配判断
+换一题：预生成题目池，JS 本地切换
+提交：完成时 JS 通过父窗口 URL 参数传递数据，Python 服务端验证
 """
 import json
 import random
@@ -13,7 +14,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 # ============================================================
-# 词库
+# 词库（大学生六级词汇）
 # ============================================================
 
 WORD_BANK = {
@@ -122,7 +123,6 @@ def generate_question() -> dict:
     count = random.randint(8, min(12, len(pool)))
     pairs = random.sample(pool, count)
 
-    # 打乱英文和中文的显示顺序（独立打乱）
     en_display = [p[0] for p in pairs]
     zh_display = [p[1] for p in pairs]
     random.shuffle(en_display)
@@ -162,7 +162,7 @@ def validate_answer(question_data: dict, user_answer) -> bool:
 # ============================================================
 
 def _build_html(initial_data: dict) -> str:
-    """构建完整的单词匹配 HTML/JS — DOM 操作模式，按钮状态实时响应"""
+    """构建完整的单词匹配 HTML/JS — DOM 操作模式"""
     init_json = json.dumps(initial_data, ensure_ascii=False)
 
     return """<!DOCTYPE html>
@@ -249,7 +249,9 @@ body {
 <body>
 <div id="app"></div>
 <script>
-// ── 状态 ──
+// ── 题目池 ──
+var questionPool = [];
+var currentQIndex = 0;
 var pairs = [];
 var enDisplay = [];
 var zhDisplay = [];
@@ -259,6 +261,25 @@ var matchedZh = new Set();
 var selectedEn = null;
 var errorCount = 0;
 var gameOver = false;
+
+// ── 加载指定题目 ──
+function loadQuestion(idx) {
+    if (idx < 0 || idx >= questionPool.length) return;
+    currentQIndex = idx;
+    var q = questionPool[idx];
+    pairs = q.pairs || [];
+    enDisplay = q.en_display || [];
+    zhDisplay = q.zh_display || [];
+    difficulty = q.difficulty || 'easy';
+
+    matchedEn = new Set();
+    matchedZh = new Set();
+    selectedEn = null;
+    errorCount = 0;
+    gameOver = false;
+
+    buildBoard();
+}
 
 // ── 一次性创建棋盘 ──
 function buildBoard() {
@@ -322,15 +343,13 @@ function buildBoard() {
     document.getElementById('btn-new').addEventListener('click', newQuestion);
 }
 
-// ── 刷新 UI（只改 class，保留 DOM → CSS transition 正常）──
+// ── 刷新 UI ──
 function refreshUI() {
-    // 统计
     var mc = document.getElementById('match-count');
     if (mc) mc.textContent = matchedEn.size;
     var ec = document.getElementById('error-count');
     if (ec) ec.textContent = errorCount;
 
-    // 英文按钮
     var enBtns = document.querySelectorAll('#en-col .word-btn');
     for (var i = 0; i < enBtns.length; i++) {
         var btn = enBtns[i];
@@ -349,7 +368,6 @@ function refreshUI() {
         }
     }
 
-    // 中文按钮
     var zhBtns = document.querySelectorAll('#zh-col .word-btn');
     for (var i = 0; i < zhBtns.length; i++) {
         var btn = zhBtns[i];
@@ -369,18 +387,11 @@ function refreshUI() {
 // ── 接收 Streamlit 数据 ──
 function onData(data) {
     if (!data) return;
-    pairs = data.pairs || [];
-    enDisplay = data.en_display || [];
-    zhDisplay = data.zh_display || [];
-    difficulty = data.difficulty || 'easy';
+    questionPool = data.questions || [];
+    currentQIndex = data.current_index || 0;
 
-    matchedEn = new Set();
-    matchedZh = new Set();
-    selectedEn = null;
-    errorCount = 0;
-    gameOver = false;
+    loadQuestion(currentQIndex);
 
-    buildBoard();
     if (data.feedback) {
         showFeedback(data.feedback[0], data.feedback[1]);
     }
@@ -421,29 +432,10 @@ function clickZh(word) {
     }
 }
 
-// ── 提交 / 换题 / 重来 ──
-function submitResult() {
-    var matchList = [];
-    for (var i = 0; i < pairs.length; i++) {
-        matchList.push([pairs[i][0], pairs[i][1]]);
-    }
-    window.parent.postMessage({
-        isStreamlitMessage: true,
-        type: 'streamlit:setComponentValue',
-        data: {
-            action: 'submit',
-            matches: matchList,
-            errors: errorCount
-        }
-    }, '*');
-}
-
+// ── 换一题：题目池本地循环 ──
 function newQuestion() {
-    window.parent.postMessage({
-        isStreamlitMessage: true,
-        type: 'streamlit:setComponentValue',
-        data: { action: 'new_question' }
-    }, '*');
+    currentQIndex = (currentQIndex + 1) % questionPool.length;
+    loadQuestion(currentQIndex);
 }
 
 function resetGame() {
@@ -453,6 +445,24 @@ function resetGame() {
     errorCount = 0;
     gameOver = false;
     refreshUI();
+}
+
+// ── 提交：通过父窗口 URL 参数传递数据 ──
+function submitResult() {
+    var matchList = [];
+    for (var i = 0; i < pairs.length; i++) {
+        matchList.push([pairs[i][0], pairs[i][1]]);
+    }
+    var data = {
+        action: 'submit',
+        game: 'wm',
+        matches: matchList,
+        errors: errorCount,
+        q_index: currentQIndex,
+        nonce: Math.random().toString(36).substr(2, 8)
+    };
+    var encoded = encodeURIComponent(JSON.stringify(data));
+    window.parent.location.href = window.parent.location.href.split('?')[0] + '?ma=' + encoded;
 }
 
 function showFeedback(type, text) {
@@ -475,63 +485,96 @@ onData(DATA);
 # Session State 与渲染
 # ============================================================
 
+POOL_SIZE = 10  # 预生成题目数量
+
+
 def _init_session():
     """初始化单词匹配的 session state"""
-    if "wm_question" not in st.session_state:
-        st.session_state.wm_question = None
+    if "wm_pool" not in st.session_state:
+        st.session_state.wm_pool = []
+    if "wm_pool_idx" not in st.session_state:
+        st.session_state.wm_pool_idx = 0
     if "wm_msg" not in st.session_state:
         st.session_state.wm_msg = None
+    if "wm_processed_nonce" not in st.session_state:
+        st.session_state.wm_processed_nonce = set()
+
+
+def _ensure_pool():
+    """确保题目池有题"""
+    if not st.session_state.wm_pool or st.session_state.wm_pool_idx >= len(st.session_state.wm_pool):
+        st.session_state.wm_pool = [generate_question() for _ in range(POOL_SIZE)]
+        st.session_state.wm_pool_idx = 0
 
 
 def _new_question():
-    """生成新题，重置状态"""
-    st.session_state.wm_question = generate_question()
-    st.session_state.wm_msg = None
+    """换一题：移动到池中下一题"""
+    st.session_state.wm_pool_idx += 1
 
 
 def render_game(game_def):
-    """渲染单词匹配游戏 — 前端 HTML 处理交互，完成时自动提交"""
+    """渲染单词匹配游戏"""
     _init_session()
 
-    if st.session_state.wm_question is None:
-        _new_question()
+    # ── 处理 URL Query Param 提交 ──
+    if "ma" in st.query_params:
+        try:
+            raw = st.query_params["ma"]
+            data = json.loads(raw)
+            if data.get("game") == "wm" and data.get("action") == "submit":
+                nonce = data.get("nonce", "")
+                if nonce and nonce not in st.session_state.wm_processed_nonce:
+                    st.session_state.wm_processed_nonce.add(nonce)
+                    if len(st.session_state.wm_processed_nonce) > 20:
+                        st.session_state.wm_processed_nonce = set(
+                            list(st.session_state.wm_processed_nonce)[-20:]
+                        )
 
-    q = st.session_state.wm_question
+                    user_answer = {
+                        "matches": data.get("matches", []),
+                        "errors": data.get("errors", 0),
+                    }
 
+                    _ensure_pool()
+                    pool = st.session_state.wm_pool
+                    idx = data.get("q_index", st.session_state.wm_pool_idx)
+                    if idx < len(pool):
+                        q = pool[idx]
+                    else:
+                        q = pool[st.session_state.wm_pool_idx]
+
+                    from storage import get_store
+                    from game_engine import calc_game_score
+                    store = get_store()
+                    result_obj = store.submit_game_score(
+                        game_def, q, user_answer, calc_game_score,
+                    )
+
+                    if result_obj.success:
+                        _new_question()
+                        st.session_state.wm_msg = ("success", result_obj.message)
+                    else:
+                        st.session_state.wm_msg = ("error", result_obj.message)
+        except Exception:
+            pass
+        try:
+            del st.query_params["ma"]
+        except Exception:
+            pass
+
+    # ── 确保题目池有题 ──
+    _ensure_pool()
+
+    pool = st.session_state.wm_pool
+    idx = st.session_state.wm_pool_idx
+    q = pool[idx]
+
+    # ── 构建前端数据 ──
     initial_data = {
-        "pairs": q["pairs"],
-        "en_display": q["en_display"],
-        "zh_display": q["zh_display"],
-        "difficulty": q["difficulty"],
-        "count": q["count"],
+        "questions": pool,
+        "current_index": idx,
         "feedback": st.session_state.wm_msg,
     }
 
-    result = components.html(_build_html(initial_data), height=560, scrolling=False)
-
-    if result and isinstance(result, dict):
-        action = result.get("action")
-
-        if action == "submit":
-            user_answer = {
-                "matches": result.get("matches", []),
-                "errors": result.get("errors", 0),
-            }
-
-            from storage import get_store
-            from game_engine import calc_game_score
-            store = get_store()
-            result_obj = store.submit_game_score(
-                game_def, q, user_answer, calc_game_score,
-            )
-
-            if result_obj.success:
-                _new_question()
-                st.session_state.wm_msg = ("success", result_obj.message)
-            else:
-                st.session_state.wm_msg = ("error", result_obj.message)
-
-        elif action == "new_question":
-            _new_question()
-
-        st.rerun()
+    # ── 渲染组件 ──
+    components.html(_build_html(initial_data), height=560, scrolling=False)

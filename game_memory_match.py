@@ -2,8 +2,9 @@
 记忆翻牌游戏 — MissYou 游戏模块
 翻开卡牌找到配对，全部配对成功即通关
 
-交互模式：前端 HTML/JS 处理所有点击、翻牌动画、计时，
-仅完成时自动提交走后端验证加分
+交互模式：前端 HTML/JS 处理所有点击、翻牌动画、计时
+换一题：预生成题目池，JS 本地切换
+提交：完成时 JS 通过父窗口 URL 参数传递数据，Python 服务端验证
 """
 import json
 import random
@@ -35,7 +36,6 @@ EMOJIS = [
 
 def generate_question() -> dict:
     """随机生成卡牌布局：保证有偶数张、随机排列"""
-    # 简单 4×3=12张(6对) / 困难 4×4=16张(8对)
     layouts = [(4, 3), (4, 4)]
     cols, rows = random.choice(layouts)
     pair_count = (cols * rows) // 2
@@ -79,7 +79,7 @@ def validate_answer(question_data: dict, user_answer) -> bool:
 # ============================================================
 
 def _build_html(initial_data: dict) -> str:
-    """构建完整的记忆翻牌 HTML/JS — DOM 操作模式，CSS 动画正常工作"""
+    """构建完整的记忆翻牌 HTML/JS — DOM 操作模式，CSS 动画正常"""
     init_json = json.dumps(initial_data, ensure_ascii=False)
 
     return """<!DOCTYPE html>
@@ -169,13 +169,36 @@ body {
 <body>
 <div id="app"></div>
 <script>
-// ── 状态 ──
+// ── 题目池 ──
+var questionPool = [];
+var currentQIndex = 0;
 var cards = [], cols = 4, rows = 3, pairCount = 0;
 var flipped = [], matched = new Set();
 var flipCount = 0, timerStart = null, timerInterval = null;
 var locked = false, gameOver = false;
 
-// ── 一次性创建棋盘（首次加载 / 换题）──
+// ── 加载指定题目 ──
+function loadQuestion(idx) {
+    if (idx < 0 || idx >= questionPool.length) return;
+    currentQIndex = idx;
+    var q = questionPool[idx];
+    cards = q.cards || [];
+    cols = q.cols || 4;
+    rows = q.rows || 3;
+    pairCount = q.pair_count || (cards.length / 2);
+
+    flipped = [];
+    matched = new Set();
+    flipCount = 0;
+    timerStart = null;
+    locked = false;
+    gameOver = false;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+
+    buildBoard();
+}
+
+// ── 一次性创建棋盘 ──
 function buildBoard() {
     var gridStyle = 'grid-template-columns:repeat(' + cols + ',1fr);';
     var cardsHtml = '';
@@ -213,7 +236,7 @@ function buildBoard() {
     document.getElementById('btn-new').addEventListener('click', newQuestion);
 }
 
-// ── 刷新 UI（只改 class，保留 DOM 元素 → CSS transition 正常）──
+// ── 刷新 UI ──
 function refreshUI() {
     var grid = document.getElementById('card-grid');
     if (!grid) return;
@@ -227,7 +250,6 @@ function refreshUI() {
             card.classList.add('flipped');
         }
     }
-    // 统计
     var fc = document.getElementById('flip-count');
     if (fc) fc.textContent = flipCount;
     var td = document.getElementById('time-display');
@@ -239,20 +261,11 @@ function refreshUI() {
 // ── 接收 Streamlit 数据 ──
 function onData(data) {
     if (!data) return;
-    cards = data.cards || [];
-    cols = data.cols || 4;
-    rows = data.rows || 3;
-    pairCount = data.pair_count || (cards.length / 2);
+    questionPool = data.questions || [];
+    currentQIndex = data.current_index || 0;
 
-    flipped = [];
-    matched = new Set();
-    flipCount = 0;
-    timerStart = null;
-    locked = false;
-    gameOver = false;
-    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    loadQuestion(currentQIndex);
 
-    buildBoard();
     if (data.feedback) {
         showFeedback(data.feedback[0], data.feedback[1]);
     }
@@ -296,7 +309,6 @@ function flipCard(i) {
     if (flipped.length === 2) {
         var a = flipped[0], b = flipped[1];
         if (cards[a] === cards[b]) {
-            // 配对成功
             matched.add(a);
             matched.add(b);
             flipped = [];
@@ -307,7 +319,6 @@ function flipCard(i) {
                 setTimeout(function() { submitResult(); }, 600);
             }
         } else {
-            // 配对失败，延迟翻回
             locked = true;
             setTimeout(function() {
                 flipped = [];
@@ -318,26 +329,11 @@ function flipCard(i) {
     }
 }
 
-// ── 提交 / 换题 / 重来 ──
-function submitResult() {
-    window.parent.postMessage({
-        isStreamlitMessage: true,
-        type: 'streamlit:setComponentValue',
-        data: {
-            action: 'submit',
-            total_flips: flipCount,
-            time_seconds: elapsed()
-        }
-    }, '*');
-}
-
+// ── 换一题：题目池本地循环 ──
 function newQuestion() {
     stopTimer();
-    window.parent.postMessage({
-        isStreamlitMessage: true,
-        type: 'streamlit:setComponentValue',
-        data: { action: 'new_question' }
-    }, '*');
+    currentQIndex = (currentQIndex + 1) % questionPool.length;
+    loadQuestion(currentQIndex);
 }
 
 function resetGame() {
@@ -350,6 +346,21 @@ function resetGame() {
     gameOver = false;
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
     refreshUI();
+}
+
+// ── 提交：通过父窗口 URL 参数传递数据 ──
+function submitResult() {
+    var q = questionPool[currentQIndex];
+    var data = {
+        action: 'submit',
+        game: 'mm',
+        total_flips: flipCount,
+        time_seconds: elapsed(),
+        q_index: currentQIndex,
+        nonce: Math.random().toString(36).substr(2, 8)
+    };
+    var encoded = encodeURIComponent(JSON.stringify(data));
+    window.parent.location.href = window.parent.location.href.split('?')[0] + '?ma=' + encoded;
 }
 
 function showFeedback(type, text) {
@@ -372,62 +383,97 @@ onData(DATA);
 # Session State 与渲染
 # ============================================================
 
+POOL_SIZE = 10  # 预生成题目数量
+
+
 def _init_session():
     """初始化记忆翻牌的 session state"""
-    if "mm_question" not in st.session_state:
-        st.session_state.mm_question = None
+    if "mm_pool" not in st.session_state:
+        st.session_state.mm_pool = []
+    if "mm_pool_idx" not in st.session_state:
+        st.session_state.mm_pool_idx = 0
     if "mm_msg" not in st.session_state:
         st.session_state.mm_msg = None
+    if "mm_processed_nonce" not in st.session_state:
+        st.session_state.mm_processed_nonce = set()
+
+
+def _ensure_pool():
+    """确保题目池有题"""
+    if not st.session_state.mm_pool or st.session_state.mm_pool_idx >= len(st.session_state.mm_pool):
+        st.session_state.mm_pool = [generate_question() for _ in range(POOL_SIZE)]
+        st.session_state.mm_pool_idx = 0
 
 
 def _new_question():
-    """生成新题，重置状态"""
-    st.session_state.mm_question = generate_question()
-    st.session_state.mm_msg = None
+    """换一题：移动到池中下一题"""
+    st.session_state.mm_pool_idx += 1
 
 
 def render_game(game_def):
-    """渲染记忆翻牌游戏 — 前端 HTML 处理交互，完成时自动提交"""
+    """渲染记忆翻牌游戏"""
     _init_session()
 
-    if st.session_state.mm_question is None:
-        _new_question()
+    # ── 处理 URL Query Param 提交 ──
+    if "ma" in st.query_params:
+        try:
+            raw = st.query_params["ma"]
+            data = json.loads(raw)
+            if data.get("game") == "mm" and data.get("action") == "submit":
+                nonce = data.get("nonce", "")
+                if nonce and nonce not in st.session_state.mm_processed_nonce:
+                    st.session_state.mm_processed_nonce.add(nonce)
+                    if len(st.session_state.mm_processed_nonce) > 20:
+                        st.session_state.mm_processed_nonce = set(
+                            list(st.session_state.mm_processed_nonce)[-20:]
+                        )
 
-    q = st.session_state.mm_question
+                    user_answer = {
+                        "total_flips": data.get("total_flips", 0),
+                        "time_seconds": data.get("time_seconds", 0),
+                    }
 
+                    # 从池中获取当前题目的数据用于验证
+                    _ensure_pool()
+                    pool = st.session_state.mm_pool
+                    idx = data.get("q_index", st.session_state.mm_pool_idx)
+                    if idx < len(pool):
+                        q = pool[idx]
+                    else:
+                        q = pool[st.session_state.mm_pool_idx]
+
+                    from storage import get_store
+                    from game_engine import calc_game_score
+                    store = get_store()
+                    result_obj = store.submit_game_score(
+                        game_def, q, user_answer, calc_game_score,
+                    )
+
+                    if result_obj.success:
+                        _new_question()
+                        st.session_state.mm_msg = ("success", result_obj.message)
+                    else:
+                        st.session_state.mm_msg = ("error", result_obj.message)
+        except Exception:
+            pass
+        try:
+            del st.query_params["ma"]
+        except Exception:
+            pass
+
+    # ── 确保题目池有题 ──
+    _ensure_pool()
+
+    pool = st.session_state.mm_pool
+    idx = st.session_state.mm_pool_idx
+    q = pool[idx]
+
+    # ── 构建前端数据 ──
     initial_data = {
-        "cards": q["cards"],
-        "cols": q["cols"],
-        "rows": q["rows"],
-        "pair_count": q["pair_count"],
+        "questions": pool,
+        "current_index": idx,
         "feedback": st.session_state.mm_msg,
     }
 
-    result = components.html(_build_html(initial_data), height=520, scrolling=False)
-
-    if result and isinstance(result, dict):
-        action = result.get("action")
-
-        if action == "submit":
-            user_answer = {
-                "total_flips": result.get("total_flips", 0),
-                "time_seconds": result.get("time_seconds", 0),
-            }
-
-            from storage import get_store
-            from game_engine import calc_game_score
-            store = get_store()
-            result_obj = store.submit_game_score(
-                game_def, q, user_answer, calc_game_score,
-            )
-
-            if result_obj.success:
-                _new_question()
-                st.session_state.mm_msg = ("success", result_obj.message)
-            else:
-                st.session_state.mm_msg = ("error", result_obj.message)
-
-        elif action == "new_question":
-            _new_question()
-
-        st.rerun()
+    # ── 渲染组件 ──
+    components.html(_build_html(initial_data), height=520, scrolling=False)
