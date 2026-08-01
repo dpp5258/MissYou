@@ -395,15 +395,28 @@ def render_game(game_def):
     # 渲染嵌入式组件
     result = components.html(_build_html(initial_data), height=460, scrolling=False)
 
-    # ── 调试：记录组件返回值 ──
+    # ── 调试 ──
     if "np_render_count" not in st.session_state:
         st.session_state.np_render_count = 0
     st.session_state.np_render_count += 1
     cnt = st.session_state.np_render_count
+
+    # 探测 DeltaGenerator 内部
+    result_type = type(result).__name__
+    attrs = [a for a in dir(result) if not a.startswith('__')]
+    maybe_val = None
+    if hasattr(result, 'value'):
+        maybe_val = result.value
+    elif hasattr(result, 'return_value'):
+        maybe_val = result.return_value
+    elif hasattr(result, '_value'):
+        maybe_val = result._value
+
     st.caption(
-        f"🔍 第{cnt}次渲染 | 返回值类型: `{type(result).__name__}` "
-        f"| 是否为dict: {isinstance(result, dict)} "
-        f"| 值: `{repr(result)[:80]}...`"
+        f"🔍 第{cnt}次渲染 | 类型: {result_type} | is dict: {isinstance(result, dict)}"
+    )
+    st.caption(
+        f"🔍 公开属性: {attrs[:20]}... | .value: {maybe_val}"
     )
 
     # 处理前端回传（防御：确保 result 是 dict 类型）
