@@ -395,6 +395,9 @@ def render_game(game_def):
     # 渲染嵌入式组件
     result = components.html(_build_html(initial_data), height=460, scrolling=False)
 
+    # ── 调试：记录 components.html 返回值 ──
+    st.caption(f"🔍 组件返回值: `{repr(result)}` | 当前题目: {q['nums']}→{q['target']}")
+
     # 处理前端回传（防御：确保 result 是 dict 类型）
     if result and isinstance(result, dict):
         action = result.get("action")
