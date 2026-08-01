@@ -393,7 +393,7 @@ def render_game(game_def):
     }
 
     # 渲染嵌入式组件
-    result = components.html(_build_html(initial_data), height=460, scrolling=False, key="np_game")
+    result = components.html(_build_html(initial_data), height=460, scrolling=False)
 
     # 处理前端回传（防御：确保 result 是 dict 类型）
     if result and isinstance(result, dict):
