@@ -12,8 +12,8 @@ from typing import Callable, Any
 @dataclass
 class GameDef:
     """所有游戏类型的统一接口定义"""
-    game_id: str                              # 唯一标识，如 "number_puzzle"
-    name: str                                 # 显示名称，如 "🔢 数字拼接运算"
+    game_id: str                              # 唯一标识，如 "memory_match"
+    name: str                                 # 显示名称，如 "🃏 记忆翻牌"
     description: str                          # 一句话介绍
     score: int = 370                          # 答对得分（基准分，实际可被 calc_game_score 调整）
     render: Callable = field(default=lambda g: None)      # (game_def) -> None
@@ -45,22 +45,11 @@ def get_all_games() -> list[GameDef]:
 # ============================================================
 
 def calc_game_score(game: GameDef, question_data: dict, user_answer) -> int:
-    """根据游戏类型和表现计算实际得分"""
-    if game.game_id == "memory_match":
-        pair_count = question_data.get("pair_count", 0)
-        if isinstance(user_answer, dict) and pair_count > 0:
-            optimal = pair_count * 2
-            actual = user_answer.get("total_flips", 999)
-            multiplier = max(0.5, optimal / max(actual, optimal))
-            return int(game.score * multiplier)
-        return game.score
-
-    if game.game_id == "word_match":
-        if isinstance(user_answer, dict):
-            errors = user_answer.get("errors", 0)
-            penalty = max(0.3, 1 - errors * 0.1)
-            return int(game.score * penalty)
-        return game.score
-
-    # 默认固定得分（数字拼接等）
+    """根据翻牌表现计算实际得分：翻牌次数越接近最优，得分越高"""
+    pair_count = question_data.get("pair_count", 0)
+    if isinstance(user_answer, dict) and pair_count > 0:
+        optimal = pair_count * 2
+        actual = user_answer.get("total_flips", 999)
+        multiplier = max(0.5, optimal / max(actual, optimal))
+        return int(game.score * multiplier)
     return game.score

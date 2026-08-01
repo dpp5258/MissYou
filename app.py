@@ -10,9 +10,7 @@ from datetime import datetime, date, timedelta
 
 from game_engine import GameDef, register_game, get_all_games, calc_game_score
 import storage
-import game_number_puzzle as gnp
 import game_memory_match as gmm
-import game_word_match as gwm
 
 # ============================================================
 # Streamlit 页面配置 (必须是第一个 Streamlit 调用)
@@ -82,21 +80,11 @@ def check_password(input_pwd, user_pwd, admin_pwd):
 
 
 # ============================================================
-# 游戏注册（新增游戏只需在这里加一行）
+# 游戏注册
 # ============================================================
 
 def _register_all_games():
     """注册所有游戏到全局注册表"""
-    register_game(GameDef(
-        game_id="number_puzzle",
-        name="🔢 数字拼接运算",
-        description="用4个数字通过+−×÷()拼出目标数",
-        score=370,
-        render=gnp.render_game,
-        generate=gnp.generate_question,
-        validate=gnp.validate_answer,
-        question_id=gnp.make_question_id,
-    ))
     register_game(GameDef(
         game_id="memory_match",
         name="🃏 记忆翻牌",
@@ -106,16 +94,6 @@ def _register_all_games():
         generate=gmm.generate_question,
         validate=gmm.validate_answer,
         question_id=gmm.make_question_id,
-    ))
-    register_game(GameDef(
-        game_id="word_match",
-        name="📝 单词匹配",
-        description="将英文单词与中文释义配对",
-        score=370,
-        render=gwm.render_game,
-        generate=gwm.generate_question,
-        validate=gwm.validate_answer,
-        question_id=gwm.make_question_id,
     ))
 
 _register_all_games()
@@ -202,7 +180,7 @@ def render_password_gate():
 
 
 def render_user_page():
-    """渲染用户思念展示页 — 星空主题、余额卡片、统计信息"""
+    """渲染用户页 — 星空主题、余额卡片、记忆翻牌游戏"""
     # ---------- 获取数据 ----------
     store = storage.get_store()
     account = store.get_account()
@@ -394,17 +372,15 @@ def render_user_page():
     </div>
     ''', unsafe_allow_html=True)
 
-    # ────────── 🎮 小游戏入口 ──────────
+    # ────────── 🎮 小游戏 ──────────
     st.markdown("---")
     st.markdown("### 🎮 小游戏赚思念值")
 
     games = get_all_games()
     if games:
-        tabs = st.tabs([g.name for g in games])
-        for tab, game in zip(tabs, games):
-            with tab:
-                st.caption(f"答对 +{game.score} 思念值 · 每天无限次 · 7天内不重复")
-                game.render(game)
+        game = games[0]
+        st.caption(f"答对 +{game.score} 思念值 · 每天无限次 · 7天内不重复")
+        game.render(game)
     else:
         st.info("暂无可用游戏，敬请期待～")
 
