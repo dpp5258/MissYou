@@ -518,30 +518,45 @@ def render_game(game_def):
                     else:
                         q = pool[st.session_state.mm_pool_idx]
 
+                    from datetime import date as _date
                     from storage import get_store
                     from game_engine import calc_game_score
                     store = get_store()
-                    result_obj = store.submit_game_score(
-                        game_def, q, user_answer, calc_game_score,
+
+                    # 计算得分
+                    score = calc_game_score(game_def, q, user_answer)
+
+                    # 直接写账户 + 日志（同管理员模式，简单可靠）
+                    account = store.get_account()
+                    new_balance = account.balance + score
+                    today = _date.today().strftime("%Y-%m-%d")
+                    store.set_balance(
+                        new_balance, account.daily_decay,
+                        today, account.start_date,
+                    )
+                    flips = user_answer.get("total_flips", 0)
+                    secs = user_answer.get("time_seconds", 0)
+                    store.add_log(
+                        f"游戏奖励-{game_def.name}",
+                        f"+{score}",
+                        new_balance,
+                        f"翻牌{flips}次 {secs}秒",
                     )
 
-                    if result_obj.success:
-                        _new_question()
-                        st.session_state.mm_msg = None
-                        st.session_state.mm_settlement = {
-                            "game_id": "memory_match",
-                            "game_name": "记忆翻牌",
-                            "score": result_obj.score,
-                            "balance_after": result_obj.balance_after,
-                            "message": result_obj.message,
-                            "stats": {
-                                "pair_count": q.get("pair_count", 0),
-                                "total_flips": data.get("total_flips", 0),
-                                "time_seconds": data.get("time_seconds", 0),
-                            },
-                        }
-                    else:
-                        st.session_state.mm_msg = ("error", result_obj.message)
+                    _new_question()
+                    st.session_state.mm_msg = None
+                    st.session_state.mm_settlement = {
+                        "game_id": "memory_match",
+                        "game_name": "记忆翻牌",
+                        "score": score,
+                        "balance_after": int(new_balance),
+                        "message": f"🎉 答对了！+{score} 思念值 ✨",
+                        "stats": {
+                            "pair_count": q.get("pair_count", 0),
+                            "total_flips": flips,
+                            "time_seconds": secs,
+                        },
+                    }
         except Exception as _e:
             import traceback as _tb
             _tb.print_exc()
