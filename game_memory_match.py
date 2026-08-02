@@ -542,8 +542,10 @@ def render_game(game_def):
                         }
                     else:
                         st.session_state.mm_msg = ("error", result_obj.message)
-        except Exception:
-            pass
+        except Exception as _e:
+            import traceback as _tb
+            _tb.print_exc()
+            st.session_state.mm_msg = ("error", f"提交异常: {_e}")
         try:
             del st.query_params["ma"]
         except Exception:
