@@ -349,7 +349,9 @@ function flipCard(i) {
             matched.add(b);
             flipped = [];
             refreshUI();
+            console.log('[记忆翻牌] 配对成功! matched=' + matched.size + '/' + cards.length);
             if (matched.size === cards.length) {
+                console.log('[记忆翻牌] 🎉 全部完成，准备提交');
                 gameOver = true;
                 stopTimer();
                 setTimeout(function() { submitResult(); }, 600);
@@ -395,6 +397,7 @@ function submitResult() {
         q_index: currentQIndex,
         nonce: Math.random().toString(36).substr(2, 8)
     };
+    console.log('[记忆翻牌] submitResult 触发, nonce=' + data.nonce + ', flips=' + flipCount + ', time=' + elapsed() + 's');
     var encoded = encodeURIComponent(JSON.stringify(data));
     window.parent.location.href = window.parent.location.href.split('?')[0] + '?ma=' + encoded;
 }
