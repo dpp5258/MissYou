@@ -115,36 +115,147 @@ def init_session():
 
 
 def render_password_gate():
-    """渲染密码门页面"""
-    # ---------- 星空背景 CSS ----------
+    """渲染密码门页面 — 星空夜幕主题"""
+    # ---------- 星空背景 + 全局样式 ----------
     st.markdown("""
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap');
+
+    * {
+        font-family: 'Georgia', 'Noto Serif SC', 'Songti SC', serif;
+    }
+
     .stApp {
         background: linear-gradient(180deg, #0a0a2e 0%, #1a0a3e 40%, #0d1b3e 100%);
     }
+
+    /* ── 星星闪烁动画 ── */
+    @keyframes twinkle1 {
+        0%,100% { opacity: 0.3; }
+        50% { opacity: 1; }
+    }
+    @keyframes twinkle2 {
+        0%,100% { opacity: 0.6; }
+        33% { opacity: 0.1; }
+        66% { opacity: 0.9; }
+    }
+    @keyframes twinkle3 {
+        0%,100% { opacity: 0.8; }
+        50% { opacity: 0.2; }
+    }
+    .stars {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        pointer-events: none;
+        z-index: -1;
+        font-size: 1.5rem;
+        color: #ffd;
+    }
+    .star1 { animation: twinkle1 3s infinite; }
+    .star2 { animation: twinkle2 4s infinite 0.5s; }
+    .star3 { animation: twinkle3 3.5s infinite 1s; }
+
+    /* ── 标题：呼吸光晕 ── */
     .title-missyou {
         text-align: center;
         font-size: 3rem;
         font-weight: bold;
         color: #e8d5f5;
-        text-shadow: 0 0 20px rgba(180, 130, 220, 0.6);
+        animation: moonGlow 3s ease-in-out infinite alternate;
+        margin-top: 1.5rem;
+    }
+    @keyframes moonGlow {
+        0%   { text-shadow: 0 0 20px rgba(180,130,220,0.6); }
+        100% { text-shadow: 0 0 40px rgba(200,160,240,0.9),
+                            0 0 80px rgba(160,120,220,0.5); }
     }
     .subtitle {
         text-align: center;
         color: #b8a9d0;
         font-size: 1.1rem;
-        margin-bottom: 2rem;
+        margin-bottom: 2.5rem;
     }
+
+    /* ── 密码卡片：毛玻璃 ── */
     .password-box {
-        background: rgba(255,255,255,0.05);
-        border-radius: 16px;
-        padding: 2rem;
-        border: 1px solid rgba(180,130,220,0.3);
+        background: rgba(20,15,45,0.7);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-radius: 20px;
+        padding: 2.5rem 2rem;
+        border: 1px solid rgba(180,130,220,0.35);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4),
+                    inset 0 1px 0 rgba(255,255,255,0.03);
         max-width: 400px;
         margin: 0 auto;
     }
+
+    /* ── 输入框 ── */
+    div[data-testid="stTextInput"] input {
+        background: rgba(255,255,255,0.07) !important;
+        border: 1px solid rgba(180,140,220,0.4) !important;
+        border-radius: 10px !important;
+        color: #e8d5f5 !important;
+        font-size: 1.05rem !important;
+        padding: 10px 14px !important;
+    }
+    div[data-testid="stTextInput"] input::placeholder {
+        color: #6a5a8a !important;
+    }
+    div[data-testid="stTextInput"] label {
+        color: #c0b0d8 !important;
+        font-size: 0.95rem !important;
+    }
+
+    /* ── 按钮 ── */
+    div[data-testid="stButton"] button {
+        background: linear-gradient(135deg, rgba(140,100,200,0.5),
+                                             rgba(100,60,180,0.5)) !important;
+        border: 1px solid rgba(180,140,220,0.5) !important;
+        border-radius: 12px !important;
+        color: #f0e0ff !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        padding: 8px 0 !important;
+        transition: all 0.2s !important;
+    }
+    div[data-testid="stButton"] button:hover {
+        background: linear-gradient(135deg, rgba(160,120,220,0.6),
+                                             rgba(120,80,200,0.6)) !important;
+        box-shadow: 0 0 20px rgba(150,100,220,0.4) !important;
+        transform: scale(1.02);
+    }
+
+    /* ── 管理员入口 ── */
+    .admin-hint {
+        text-align: center;
+        color: #605080;
+        font-size: 0.78rem;
+        margin-top: 2.5rem;
+        letter-spacing: 2px;
+        transition: color 0.3s;
+    }
+    .admin-hint:hover {
+        color: #9080b0;
+    }
     </style>
     """, unsafe_allow_html=True)
+
+    # ---------- 星星装饰 ----------
+    star_positions = [
+        ('✦', 'star1', '10%', '8%'),
+        ('✧', 'star2', '88%', '6%'),
+        ('⋆', 'star3', '5%', '32%'),
+        ('✦', 'star1', '82%', '28%'),
+        ('✧', 'star3', '20%', '55%'),
+        ('✦', 'star2', '75%', '50%'),
+    ]
+    stars_html = '<div class="stars">'
+    for star, anim_class, left, top in star_positions:
+        stars_html += f'<span class="{anim_class}" style="position:absolute;left:{left};top:{top};">{star}</span>'
+    stars_html += '</div>'
+    st.markdown(stars_html, unsafe_allow_html=True)
 
     # ---------- 标题 ----------
     st.markdown('<p class="title-missyou">🌙 MissYou</p>', unsafe_allow_html=True)
@@ -173,8 +284,7 @@ def render_password_gate():
 
     # 管理员入口提示
     st.markdown(
-        '<p style="text-align:center;color:#555;font-size:0.75rem;margin-top:2rem;">'
-        '管理员入口 ▼</p>',
+        '<p class="admin-hint">管理员入口 ▼</p>',
         unsafe_allow_html=True
     )
 
@@ -374,7 +484,7 @@ def render_user_page():
 
     # ────────── 🎮 小游戏 ──────────
     st.markdown("---")
-    st.markdown("### 🎮 小游戏赚思念值")
+    st.markdown("### 🎮 解锁记忆力")
 
     games = get_all_games()
     if games:
