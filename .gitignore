@@ -9,3 +9,6 @@ __pycache__/
 *no1project-5555-73945d64b6ec*
 secrets_config.txt
 *.bak
+
+# 本地数据库
+*.db
