@@ -3,14 +3,11 @@ MissYou — 思念量化系统
 星空夜幕主题 | Google Sheets 数据 | Streamlit 部署
 """
 import html
-import json
 
 import streamlit as st
 from datetime import datetime, date, timedelta
 
-from game_engine import GameDef, register_game, get_all_games, calc_game_score
 import storage
-import game_memory_match as gmm
 
 # ============================================================
 # Streamlit 页面配置 (必须是第一个 Streamlit 调用)
@@ -77,26 +74,6 @@ def check_password(input_pwd, user_pwd, admin_pwd):
     if input_pwd == user_pwd:
         return "user"
     return None
-
-
-# ============================================================
-# 游戏注册
-# ============================================================
-
-def _register_all_games():
-    """注册所有游戏到全局注册表"""
-    register_game(GameDef(
-        game_id="memory_match",
-        name="🃏 记忆翻牌",
-        description="翻开卡牌，找到所有配对",
-        score=370,
-        render=gmm.render_game,
-        generate=gmm.generate_question,
-        validate=gmm.validate_answer,
-        question_id=gmm.make_question_id,
-    ))
-
-_register_all_games()
 
 
 # ============================================================
@@ -481,18 +458,6 @@ def render_user_page():
         </div>
     </div>
     ''', unsafe_allow_html=True)
-
-    # ────────── 🎮 小游戏 ──────────
-    st.markdown("---")
-    st.markdown("### 🎮 解锁记忆力")
-
-    games = get_all_games()
-    if games:
-        game = games[0]
-        st.caption(f"答对 +{game.score} 思念值 · 每天无限次 · 7天内不重复")
-        game.render(game)
-    else:
-        st.info("暂无可用游戏，敬请期待～")
 
     # 主题文案
     st.markdown(

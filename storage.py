@@ -2,10 +2,8 @@
 MissYou 数据存储层 — Google Sheets 实现
 所有表格读写封装在 MissYouStore 中，通过模块级单例访问
 """
-import json
-from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
-from typing import Callable
+from dataclasses import dataclass
+from datetime import datetime
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -21,14 +19,6 @@ class AccountState:
     daily_decay: float = 0
     last_update: str = ""
     start_date: str = ""
-
-
-@dataclass
-class ScoreResult:
-    success: bool
-    message: str
-    balance_after: int | None = None
-    score: int = 0
 
 
 # ============================================================
@@ -107,131 +97,6 @@ class MissYouStore:
                     "note": row[4],
                 })
         return logs
-
-    # ── 游戏记录 ──────────────────────────────────
-
-    def _ensure_game_sheet(self):
-        """确保"游戏记录"工作表存在"""
-        try:
-            self.sheet.worksheet("游戏记录")
-        except gspread.exceptions.WorksheetNotFound:
-            ws = self.sheet.add_worksheet("游戏记录", rows=1000, cols=7)
-            ws.append_row([
-                "时间", "游戏类型", "题目ID", "题目数据",
-                "用户答案", "得分", "操作后余额",
-            ])
-
-    def is_question_recent(self, game_type: str, qid: str) -> bool:
-        """检查该题目 7 天内是否已经答对过"""
-        try:
-            ws = self.sheet.worksheet("游戏记录")
-        except gspread.exceptions.WorksheetNotFound:
-            return False
-
-        cutoff = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
-        all_rows = ws.get_all_values()
-
-        for row in all_rows[1:]:
-            if len(row) < 3:
-                continue
-            if (
-                row[1] == game_type
-                and row[2] == qid
-                and row[0][:10] >= cutoff
-            ):
-                return True
-        return False
-
-    def _record_game(
-        self, game_type: str, qid: str, question_data: dict,
-        user_answer, score: int, balance_after: float,
-    ):
-        """写游戏记录（去重 + 审计用）"""
-        ws = self.sheet.worksheet("游戏记录")
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        q_snapshot = ", ".join(
-            f"{k}:{v}" for k, v in question_data.items()
-        )
-        answer_str = (
-            json.dumps(user_answer, ensure_ascii=False)
-            if isinstance(user_answer, dict)
-            else str(user_answer)
-        )
-        ws.append_row([
-            timestamp, game_type, qid, q_snapshot,
-            answer_str, score, int(balance_after),
-        ])
-
-    # ── 统一加分流程 ──────────────────────────────
-
-    def submit_game_score(
-        self, game, question_data: dict, user_answer,
-        calc_score_fn: Callable | None = None,
-    ) -> ScoreResult:
-        """
-        统一加分入口 — 所有游戏共用。
-        流程：去重 → 验证 → 计分 → 写账户 → 写日志 → 写游戏记录
-
-        calc_score_fn: (game, question_data, user_answer) -> int
-            部分游戏根据表现动态调整得分。为 None 则使用 game.score 固定分。
-        """
-        import traceback as _traceback
-
-        try:
-            # 1. 生成题目 ID
-            qid = game.question_id(question_data)
-
-            # 2. 确保工作表存在
-            self._ensure_game_sheet()
-
-            # 3. 7 天去重检查
-            if self.is_question_recent(game.game_id, qid):
-                return ScoreResult(
-                    False, "⏳ 这道题 7 天内已经答过了，换一题吧～"
-                )
-
-            # 4. 服务端验证答案
-            if not game.validate(question_data, user_answer):
-                return ScoreResult(False, "❌ 答案不对，再想想哦～")
-
-            # 5. 计算实际得分
-            score = calc_score_fn(game, question_data, user_answer) if calc_score_fn else game.score
-
-            # 6. 读取当前余额
-            account = self.get_account()
-            new_balance = account.balance + score
-
-            # 7. 写账户状态
-            self.set_balance(
-                new_balance, account.daily_decay,
-                date.today().strftime("%Y-%m-%d"), account.start_date,
-            )
-
-            # 8. 写操作日志
-            self.add_log(
-                f"游戏奖励-{game.name}",
-                f"+{score}",
-                new_balance,
-                f"题目#{qid}",
-            )
-
-            # 9. 写游戏记录（去重用）
-            self._record_game(
-                game.game_id, qid, question_data, user_answer, score, new_balance,
-            )
-
-            return ScoreResult(
-                True,
-                f"🎉 答对了！+{score} 思念值 ✨",
-                int(new_balance),
-                score=score,
-            )
-        except Exception as e:
-            _traceback.print_exc()
-            return ScoreResult(
-                False,
-                f"❌ 数据存储异常，请稍后重试（{e}）",
-            )
 
 
 # ============================================================
