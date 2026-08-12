@@ -5,7 +5,7 @@ MissYou — 思念量化系统
 import html
 
 import streamlit as st
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 
 import storage
 
@@ -19,7 +19,6 @@ st.set_page_config(page_title="MissYou", page_icon="🌙", layout="centered")
 # ============================================================
 USER_PWD = st.secrets["USER_PWD"]
 ADMIN_PWD = st.secrets["ADMIN_PWD"]
-SHEET_NAME = st.secrets["SHEET_NAME"]
 SHEET_ID = st.secrets["SHEET_ID"]
 
 # ============================================================
