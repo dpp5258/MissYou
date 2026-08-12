@@ -827,29 +827,30 @@ def render_admin_page():
         rows_html = ""
         for log in display_logs:
             badge = _op_type_badge(log["op_type"])
-            rows_html += f"""
-            <tr>
-                <td>{log['time']}</td>
-                <td>{badge}</td>
-                <td class="change-col">{log['change']}</td>
-                <td>{log['balance_after']}</td>
-                <td class="note-col">{log['note']}</td>
-            </tr>"""
+            rows_html += (
+                "<tr>"
+                f"<td>{log['time']}</td>"
+                f"<td>{badge}</td>"
+                f"<td class=\"change-col\">{log['change']}</td>"
+                f"<td>{log['balance_after']}</td>"
+                f"<td class=\"note-col\">{log['note']}</td>"
+                "</tr>"
+            )
 
-        st.markdown(f"""
-        <div class="log-table-wrap">
-        <table class="log-table">
-            <thead>
-                <tr>
-                    <th>时间</th><th>类型</th><th>变化</th><th>余额</th><th>备注</th>
-                </tr>
-            </thead>
-            <tbody>
-                {rows_html}
-            </tbody>
-        </table>
-        </div>
-        """, unsafe_allow_html=True)
+        st.html(
+            "<div class=\"log-table-wrap\">"
+            "<table class=\"log-table\">"
+            "<thead>"
+            "<tr>"
+            "<th>时间</th><th>类型</th><th>变化</th><th>余额</th><th>备注</th>"
+            "</tr>"
+            "</thead>"
+            "<tbody>"
+            + rows_html +
+            "</tbody>"
+            "</table>"
+            "</div>"
+        )
     else:
         st.info("暂无操作记录")
 
