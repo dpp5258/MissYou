@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 .streamlit/secrets.toml
 
+# MCP 配置（含 token）
+.mcp.json
+
 # 敏感文件 - 凭证和密钥
 *no1project-5555-73945d64b6ec*
 secrets_config.txt
+*.bak
