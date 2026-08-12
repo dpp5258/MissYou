@@ -9,7 +9,7 @@ import streamlit as st
 from datetime import datetime, date, timedelta
 
 from game_engine import GameDef, register_game, get_all_games, calc_game_score
-import storage_sqlite as storage
+import storage
 import game_memory_match as gmm
 
 # ============================================================
@@ -22,15 +22,20 @@ st.set_page_config(page_title="MissYou", page_icon="🌙", layout="centered")
 # ============================================================
 USER_PWD = st.secrets["USER_PWD"]
 ADMIN_PWD = st.secrets["ADMIN_PWD"]
+SHEET_NAME = st.secrets["SHEET_NAME"]
+SHEET_ID = st.secrets["SHEET_ID"]
 
 # ============================================================
 # 存储初始化（app.py 启动时调用一次）
 # ============================================================
 
 def _init_storage():
-    """初始化 SQLite 本地存储"""
+    """初始化 Google Sheets 存储连接"""
     try:
-        storage.init_store()
+        storage.init_store(
+            dict(st.secrets["GOOGLE_CREDENTIALS"]),
+            st.secrets["SHEET_ID"],
+        )
         return True
     except Exception as e:
         st.error(f"无法连接数据库：{e}")
