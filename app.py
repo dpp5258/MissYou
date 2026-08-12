@@ -566,13 +566,13 @@ def init_session():
 
 def render_password_gate():
     st.title("🌸 桃花恋")
-    st.caption("桃花树下，每一份恋意都值得被看见")
+    st.caption("桃花树下，每一瓣都值得被看见")
 
     pwd = st.text_input("请输入查询密码", type="password", key="pwd_input")
 
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
-        btn = st.button("🌸 开启桃花笺", use_container_width=True)
+        btn = st.button("🌸 桃花笺", use_container_width=True)
 
     if btn:
         role = check_password(pwd, USER_PWD, ADMIN_PWD)
@@ -584,7 +584,7 @@ def render_password_gate():
             st.session_state.login_error = True
 
     if st.session_state.login_error:
-        st.error("密码有误，桃花笺无法开启")
+        st.error("密码有误，无法开启")
 
     st.markdown(
         '<p class="admin-hint">🔑 花匠入口 · 输入密码</p>',
@@ -613,7 +613,7 @@ def render_user_page():
                 date.today().strftime("%Y-%m-%d"), start_date,
             )
             store.add_log(
-                "🌬️ 自然落花",
+                "自然落花",
                 f"-{daily_decay * days_passed}",
                 new_balance,
                 f"{days_passed} 天花瓣自然飘落 × {daily_decay}/天",
@@ -635,7 +635,7 @@ def render_user_page():
     st.markdown(f"""
     <div class="days-banner">
         <span class="days-emoji">🌸</span>
-        <span class="days-text">桃花树下，恋你的第</span>
+        <span class="days-text">花未落，恋你的第</span>
         <span class="days-number">{total_days}</span>
         <span class="days-text">天</span>
     </div>
@@ -645,15 +645,15 @@ def render_user_page():
     if int(balance) <= 0:
         st.markdown("""
         <div class="balance-card depleted">
-            <div class="balance-label">🌸 桃花蜜值</div>
+            <div class="balance-label">🌸 花蜜</div>
             <div class="balance-number">花期已过，静待重逢</div>
-            <div class="balance-hint">新的桃花会在春天再次绽放</div>
+            <div class="balance-hint">他日我若为青帝</div>
         </div>
         """, unsafe_allow_html=True)
     else:
         st.markdown(f"""
         <div class="balance-card">
-            <div class="balance-label">🌸 桃花蜜值</div>
+            <div class="balance-label">🌸 花蜜</div>
             <div class="balance-number">{int(balance):,}</div>
             <div class="balance-unit">花蜜</div>
         </div>
@@ -682,7 +682,7 @@ def render_user_page():
         <div class="stat-card">
             <div class="stat-emoji">🕐</div>
             <div class="stat-value">{start_date}</div>
-            <div class="stat-label">相遇之日</div>
+            <div class="stat-label">起始之日</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -715,7 +715,7 @@ def render_user_page():
     # ── 退出 ──
     col1, col2, col3 = st.columns([2, 1, 2])
     with col2:
-        if st.button("🚪 离开桃花源", type="secondary", use_container_width=True, key="user_logout"):
+        if st.button("🚪 离开桃源", type="secondary", use_container_width=True, key="user_logout"):
             st.session_state.role = None
             st.rerun()
 
@@ -727,10 +727,10 @@ def render_user_page():
 def _op_type_badge(op_type: str) -> str:
     """根据操作类型返回彩色标签 HTML"""
     color_map = {
-        "🌸 增添花蜜": "#4ade80",
-        "🍂 花落": "#f87171",
-        "🌬️ 自然落花": "#fbbf24",
-        "⚡ 调整风速": "#60a5fa",
+        "增添花蜜": "#4ade80",
+        "花落": "#f87171",
+        "自然落花": "#fbbf24",
+        "调整风速": "#60a5fa",
     }
     color = color_map.get(op_type, "#a0a0b8")
     return (
@@ -761,7 +761,7 @@ def render_admin_page():
                 date.today().strftime("%Y-%m-%d"), start_date,
             )
             store.add_log(
-                "🌬️ 自然落花",
+                "自然落花",
                 f"-{daily_decay * days_passed}",
                 new_balance,
                 f"{days_passed} 天自然落花",
@@ -813,7 +813,7 @@ def render_admin_page():
                 new_bal, daily_decay,
                 date.today().strftime("%Y-%m-%d"), start_date,
             )
-            store.add_log("🌸 增添花蜜", f"+{add_amount}", new_bal, add_note)
+            store.add_log("增添花蜜", f"+{add_amount}", new_bal, add_note)
             st.success(f"已增添 {add_amount}，当前花蜜 {int(new_bal):,}")
             st.rerun()
 
@@ -826,7 +826,7 @@ def render_admin_page():
                 new_bal, daily_decay,
                 date.today().strftime("%Y-%m-%d"), start_date,
             )
-            store.add_log("🍂 花落", f"-{sub_amount}", new_bal, sub_note)
+            store.add_log("花落", f"-{sub_amount}", new_bal, sub_note)
             st.success(f"已落花 {sub_amount}，当前花蜜 {int(new_bal):,}")
             st.rerun()
 
@@ -840,7 +840,7 @@ def render_admin_page():
                 date.today().strftime("%Y-%m-%d"), start_date,
             )
             store.add_log(
-                "⚡ 调整风速", f"{int(daily_decay)}->{new_decay}",
+                "调整风速", f"{int(daily_decay)}->{new_decay}",
                 balance, f"花落速度从 {int(daily_decay)} 调整为 {new_decay}",
             )
             st.success(f"花落速度已调整为 {new_decay}")
