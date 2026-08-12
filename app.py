@@ -567,6 +567,11 @@ def init_session():
 def render_password_gate():
     st.title("🌸 桃花恋")
     st.caption("桃花树下，每一瓣都值得被看见")
+    st.markdown(
+        '<p style="text-align:center; font-size:0.75rem; color:#c0a0b0; margin-top:-0.5rem;">'
+        'MissYou — 桃花主题限定</p>',
+        unsafe_allow_html=True,
+    )
 
     pwd = st.text_input("请输入查询密码", type="password", key="pwd_input")
 
